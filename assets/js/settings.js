@@ -24,7 +24,13 @@ export function loadSettings() {
 
 export function saveSettings(patch) {
   const next = { ...loadSettings(), ...patch };
-  localStorage.setItem(KEY, JSON.stringify(next));
+  // Navigation privée, iframe cloisonnée… : l'absence de stockage ne doit pas
+  // faire tomber l'interface, on continue simplement sans persistance.
+  try {
+    localStorage.setItem(KEY, JSON.stringify(next));
+  } catch (err) {
+    console.warn('Réglages non persistés :', err.message);
+  }
   return next;
 }
 
