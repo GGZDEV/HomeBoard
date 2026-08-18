@@ -1,0 +1,160 @@
+{
+  "name": "Maison",
+  "subtitle": "HomeBoard",
+  "grid": { "tileWidth": 66, "tileHeight": 33, "wallHeight": 34 },
+  "globals": {
+    "weather": "weather.maison",
+    "outdoorTemperature": "sensor.exterieur_temperature",
+    "power": "sensor.consommation_electrique",
+    "solar": "sensor.production_solaire",
+    "alarm": "alarm_control_panel.maison",
+    "persons": ["person.guillaume", "person.marie"],
+    "favorites": [
+      "light.salon",
+      "climate.salon",
+      "media_player.tv_salon",
+      "cover.salon_volet"
+    ]
+  },
+  "scenes": [
+    { "id": "scene.bonjour", "name": "Bonjour", "icon": "sun" },
+    { "id": "scene.cinema", "name": "Cinéma", "icon": "tv" },
+    { "id": "scene.diner", "name": "Dîner", "icon": "cooking" },
+    { "id": "scene.nuit", "name": "Nuit", "icon": "moon" },
+    { "id": "script.tout_eteindre", "name": "Tout éteindre", "icon": "power" }
+  ],
+  "floors": [
+    {
+      "id": "rdc",
+      "name": "Rez-de-chaussée",
+      "short": "RDC",
+      "rooms": [
+        {
+          "id": "salon",
+          "name": "Salon",
+          "icon": "sofa",
+          "x": 0, "y": 0, "w": 6, "h": 5,
+          "entities": [
+            "light.salon",
+            "light.salon_lampadaire",
+            "climate.salon",
+            "media_player.tv_salon",
+            "cover.salon_volet",
+            "sensor.salon_temperature",
+            "sensor.salon_humidity"
+          ]
+        },
+        {
+          "id": "cuisine",
+          "name": "Cuisine",
+          "icon": "cooking",
+          "x": 6, "y": 0, "w": 5, "h": 5,
+          "entities": [
+            "light.cuisine",
+            "switch.cafetiere",
+            "sensor.cuisine_temperature",
+            "binary_sensor.cuisine_mouvement"
+          ]
+        },
+        {
+          "id": "entree",
+          "name": "Entrée",
+          "icon": "door",
+          "x": 0, "y": 5, "w": 3, "h": 4,
+          "entities": [
+            "light.entree",
+            "lock.porte_entree",
+            "binary_sensor.porte_entree"
+          ]
+        },
+        {
+          "id": "bureau",
+          "name": "Bureau",
+          "icon": "laptop",
+          "x": 3, "y": 5, "w": 3, "h": 4,
+          "entities": [
+            "light.bureau",
+            "switch.pc_bureau",
+            "media_player.enceinte_bureau",
+            "sensor.bureau_temperature"
+          ]
+        },
+        {
+          "id": "garage",
+          "name": "Garage",
+          "icon": "car",
+          "x": 6, "y": 5, "w": 5, "h": 4,
+          "entities": [
+            "light.garage",
+            "cover.porte_garage",
+            "sensor.voiture_batterie",
+            "binary_sensor.garage_porte"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "etage",
+      "name": "Étage",
+      "short": "R+1",
+      "rooms": [
+        {
+          "id": "chambre",
+          "name": "Chambre parentale",
+          "icon": "bed",
+          "x": 0, "y": 0, "w": 6, "h": 5,
+          "entities": [
+            "light.chambre",
+            "climate.chambre",
+            "cover.chambre_volet",
+            "media_player.enceinte_chambre",
+            "sensor.chambre_temperature"
+          ]
+        },
+        {
+          "id": "sdb",
+          "name": "Salle de bain",
+          "icon": "shower",
+          "x": 6, "y": 0, "w": 5, "h": 5,
+          "entities": [
+            "light.sdb",
+            "switch.seche_serviette",
+            "sensor.sdb_humidity",
+            "sensor.sdb_temperature"
+          ]
+        },
+        {
+          "id": "chambre_lea",
+          "name": "Chambre Léa",
+          "icon": "bed",
+          "x": 0, "y": 5, "w": 4, "h": 4,
+          "entities": [
+            "light.chambre_lea",
+            "cover.chambre_lea_volet",
+            "sensor.chambre_lea_temperature"
+          ]
+        },
+        {
+          "id": "chambre_tom",
+          "name": "Chambre Tom",
+          "icon": "bed",
+          "x": 4, "y": 5, "w": 4, "h": 4,
+          "entities": [
+            "light.chambre_tom",
+            "sensor.chambre_tom_temperature"
+          ]
+        },
+        {
+          "id": "palier",
+          "name": "Palier",
+          "icon": "stairs",
+          "x": 8, "y": 5, "w": 3, "h": 4,
+          "entities": [
+            "light.palier",
+            "binary_sensor.palier_mouvement"
+          ]
+        }
+      ]
+    }
+  ]
+}

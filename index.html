@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark light">
+  <meta name="description" content="HomeBoard — tableau de bord isométrique pour Home Assistant.">
+  <title>HomeBoard · Tableau de bord Home Assistant</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><text y='19' font-size='19'>🏠</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/base.css">
+  <link rel="stylesheet" href="assets/css/layout.css">
+  <link rel="stylesheet" href="assets/css/components.css">
+</head>
+<body>
+  <div class="backdrop-glow" aria-hidden="true"></div>
+
+  <div class="app" id="app">
+    <aside class="rail" id="rail"></aside>
+
+    <div class="content">
+      <header class="topbar" id="topbar"></header>
+      <div class="workspace">
+        <section class="view-root" id="view-root"></section>
+        <aside class="panel" id="panel" aria-label="Détails"></aside>
+      </div>
+    </div>
+  </div>
+
+  <p class="boot-error" id="boot-error" hidden></p>
+  <div class="modal-root" id="modal-root"></div>
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <noscript>
+    <p class="boot-error">HomeBoard a besoin de JavaScript pour fonctionner.</p>
+  </noscript>
+
+  <script type="module" src="assets/js/app.js"></script>
+</body>
+</html>
