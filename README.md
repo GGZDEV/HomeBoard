@@ -1,30 +1,20 @@
 # HomeBoard
 
-Un tableau de bord **Home Assistant** avec une vue « 2.5D » isométrique de la maison…
-sans avoir à modéliser quoi que ce soit en 3D.
+Un tableau de bord **Home Assistant** avec une vue « 2.5D » isométrique de la maison,
+dessinée au doigt — sans modélisation 3D et sans écrire une ligne de JSON.
 
-Chaque pièce est simplement un **rectangle sur une grille** (`x`, `y`, largeur, profondeur)
-décrit dans un fichier JSON. HomeBoard se charge de l'extrusion isométrique, des murs,
-des ombres et des halos de lumière. Modéliser sa maison prend une dizaine de minutes,
-avec un éditeur de plan intégré à l'application.
+- **Éditeur de plan visuel** : on pose des pièces sur une grille, on les glisse, on
+  tire leurs poignées, on peint des cases pour les formes en L, T ou U. Autant
+  d'étages que nécessaire.
+- **Interface qui s'adapte à votre installation** : chaque carte, chaque onglet
+  n'apparaît que si les entités correspondantes existent chez vous. Pas d'alarme ?
+  Pas d'onglet Sécurité.
+- **Pensé pour le tactile** : téléphone et tablette d'abord, avec barre d'onglets
+  au pouce, feuilles remontantes, pincer-pour-zoomer. L'écran large reste confortable.
 
 > Prototype fonctionnel : il tourne en **mode démo** (maison fictive animée, aucune
 > installation requise) ou en **mode direct**, branché sur l'API WebSocket de votre
 > serveur Home Assistant.
-
----
-
-## Ce que ça fait
-
-| | |
-|---|---|
-| **Plan isométrique vivant** | Les pièces s'allument avec la couleur réelle de vos lampes, l'intensité du halo suit la luminosité, les appareils actifs apparaissent sur l'étiquette de la pièce. |
-| **Pilotage complet** | Lampes (on/off, luminosité, couleur), thermostats, volets, serrures, lecteurs multimédia, interrupteurs. |
-| **Multi-étages** | Un onglet par niveau, avec un point orange quand des lumières y sont allumées. |
-| **Scènes** | Barre de scènes en bas du plan (`scene.*` et `script.*`). |
-| **Vues dédiées** | Pièces, Énergie (consommation / production solaire / appareils actifs), Sécurité (alarme, ouvertures, serrures, détecteurs). |
-| **Thème clair / sombre** | Bascule instantanée, mémorisée. |
-| **Zéro dépendance** | Pas de build, pas de framework, pas de `node_modules`. Du HTML, du CSS et des modules ES. |
 
 ---
 
@@ -39,45 +29,67 @@ cd HomeBoard
 python3 -m http.server 8080
 ```
 
-Puis ouvrez <http://localhost:8080>. Une maison fictive s'anime immédiatement :
-températures qui dérivent, détecteurs qui se déclenchent, scènes fonctionnelles.
+Puis ouvrez <http://localhost:8080>.
+
+Pour une version « un seul fichier », ouvrable sans serveur et facile à partager :
+
+```bash
+node tools/build-single-file.js   # -> dist/homeboard.html
+```
 
 ---
 
-## Brancher son vrai Home Assistant
+## Dessiner sa maison
+
+Onglet **Éditeur**. Aucune connaissance technique requise.
+
+| Geste | Effet |
+|---|---|
+| **+ Pièce** | Pose une pièce de 4 × 3 là où vous regardez. |
+| Glisser une pièce | La déplace. Elle devient rouge si elle chevauche une voisine — le déplacement est alors refusé. |
+| Tirer une poignée | Redimensionne (pièces rectangulaires). |
+| **Agrandir** puis glisser | Ajoute des cases : c'est ainsi qu'on obtient un L, un T ou un U. |
+| **Rogner** puis glisser | Retire des cases. |
+| Pincer / molette | Zoom. Glisser le fond : déplacement de la vue. |
+| **↺** | Annule la dernière action (40 niveaux). |
+
+À droite (en bas sur téléphone) : le nom de la pièce, son icône, et la liste de ses
+appareils. **Ajouter** ouvre la liste des entités Home Assistant non encore placées.
+Le bouton **Rattacher les appareils automatiquement** fait le gros du travail : il
+associe `light.cuisine_plan_de_travail` à la pièce « Cuisine », etc.
+
+Les étages se gèrent dans la barre du haut : ajouter, renommer, **dupliquer** (très
+pratique, l'étage a souvent la même empreinte que le rez-de-chaussée), supprimer.
+
+Tout est enregistré au fur et à mesure dans le navigateur. **Réglages → Sauvegarde**
+permet de copier le plan pour le transférer sur un autre appareil.
+
+---
+
+## Brancher son Home Assistant
 
 1. Dans Home Assistant : **Profil → Sécurité → Jetons d'accès longue durée →
    Créer un jeton**. Copiez-le.
-2. Dans HomeBoard : bouton **Réglages** (en bas du rail), onglet **Connexion**.
-3. Choisissez **Home Assistant**, renseignez l'URL (`http://homeassistant.local:8123`)
-   et collez le jeton.
+2. Dans HomeBoard : bouton **Réglages** (barre du haut), onglet **Connexion**.
+3. Choisissez **Home Assistant**, renseignez l'URL et collez le jeton.
 4. **Tester la connexion**, puis **Enregistrer**.
 
-L'URL et le jeton restent dans le `localStorage` du navigateur : rien n'est envoyé
-ailleurs. Si le serveur est injoignable au démarrage, HomeBoard bascule
-automatiquement en mode démo plutôt que d'afficher une page vide.
+L'URL et le jeton restent dans le `localStorage` du navigateur. Si le serveur est
+injoignable au démarrage, HomeBoard bascule en mode démo plutôt que d'afficher une
+page vide.
 
-**Si ça ne se connecte pas :**
+**Si ça ne se connecte pas :** page en `https://` et Home Assistant en `http://`, le
+navigateur bloque la WebSocket — servez HomeBoard depuis Home Assistant lui-même
+(ci-dessous). Derrière un reverse proxy, vérifiez que les WebSockets sont relayées.
 
-- Page en `https://` et Home Assistant en `http://` → le navigateur bloque la
-  WebSocket. Servez HomeBoard depuis Home Assistant lui-même (voir ci-dessous).
-- Home Assistant derrière un reverse proxy : vérifiez que les WebSockets sont bien
-  relayées (`proxy_set_header Upgrade`/`Connection` côté nginx).
-
----
-
-## L'installer dans Home Assistant
-
-Le plus simple : servir HomeBoard depuis Home Assistant, ce qui règle d'un coup les
-questions de HTTPS et d'origine.
+### L'installer dans Home Assistant
 
 ```bash
-# depuis la machine qui héberge Home Assistant
 cp -r HomeBoard /config/www/homeboard
 ```
 
-Il est alors accessible sur `https://<votre-ha>/local/homeboard/`.
-Pour en faire une entrée de menu à part entière, dans `configuration.yaml` :
+Accessible sur `https://<votre-ha>/local/homeboard/`. Pour une entrée de menu à part
+entière, dans `configuration.yaml` :
 
 ```yaml
 panel_iframe:
@@ -88,74 +100,75 @@ panel_iframe:
     require_admin: false
 ```
 
-Redémarrez Home Assistant. Dans les réglages de HomeBoard, l'URL est
-pré-remplie avec l'origine courante — il ne reste que le jeton à coller.
+L'URL est alors pré-remplie avec l'origine courante : il ne reste que le jeton.
 
-*(Une carte `webpage` dans un dashboard Lovelace fonctionne aussi, mais le mode
-plein écran d'un panneau rend mieux.)*
-
-### Version « un seul fichier »
-
-Pour partager le prototype ou l'ouvrir sans serveur :
-
-```bash
-node tools/build-single-file.js   # -> dist/homeboard.html
-```
-
-CSS, modules et plan de la maison sont inlinés dans un unique HTML autonome.
+Pour une tablette murale, ce panneau en plein écran est le mode d'emploi le plus
+confortable — la mise en page est prévue pour le tactile et ne demande jamais de survol.
 
 ---
 
-## Modéliser sa maison (10 minutes, sans modeleur 3D)
+## Ce qui s'affiche, et quand
 
-Tout tient dans [`config/home.json`](config/home.json). L'éditeur intégré
-(**Réglages → Plan de la maison**) valide le JSON et applique le plan à chaud ;
-l'onglet **Entités** liste toutes vos entités Home Assistant, cliquables pour copier
-leur identifiant.
+Rien n'est affiché « au cas où ». À chaque changement d'état, HomeBoard relit la liste
+des entités et en déduit ce qu'il peut proposer :
 
-### Une pièce
+| Fonctionnalité | Condition |
+|---|---|
+| Onglet **Énergie** | un capteur `device_class: power` ou `energy` |
+| Onglet **Sécurité** | une alarme, une serrure, ou un capteur d'ouverture |
+| Carte **Météo** | une entité `weather.*` ou un capteur de température extérieure |
+| Carte **Présence** | au moins une entité `person.*` |
+| Barre de **scènes** | des entités `scene.*` ou `script.*` |
+| Puces de la barre haute | idem, une par mesure réellement disponible |
+
+Les identifiants sont devinés par nom (`sensor.production_solaire` → production
+solaire). Pour forcer un choix, un bloc `globals` optionnel dans le plan a la
+priorité :
 
 ```json
-{
-  "id": "salon",
-  "name": "Salon",
-  "icon": "sofa",
-  "x": 0, "y": 0, "w": 6, "h": 5,
-  "entities": ["light.salon", "climate.salon", "sensor.salon_temperature"]
+"globals": {
+  "power": "sensor.mon_compteur",
+  "solar": "sensor.mes_panneaux",
+  "favorites": ["light.salon", "climate.salon"]
 }
 ```
 
-| Champ | Rôle |
-|---|---|
-| `x`, `y` | Coin haut-gauche de la pièce sur la grille (vue de dessus, avant projection). |
-| `w`, `h` | Largeur et profondeur, en cases de grille. |
-| `icon` | Icône affichée sur l'étiquette (voir la liste ci-dessous). |
-| `entities` | Entités Home Assistant rattachées à la pièce, dans l'ordre d'affichage. |
+---
 
-**La méthode :** dessinez le plan de votre étage sur une feuille quadrillée, une case
-= environ 50 cm. Notez pour chaque pièce le coin haut-gauche et ses dimensions.
-Recopiez. Les pièces qui se touchent partagent naturellement leurs murs — inutile de
-dessiner ces derniers, ils sont générés.
+## Format du plan
 
-Icônes disponibles pour les pièces : `sofa`, `cooking`, `bed`, `shower`, `door`,
-`laptop`, `car`, `stairs`, `tv`, `speaker`, `grid`.
-
-### Le reste du fichier
+L'éditeur produit ce fichier ; le lire n'est utile que pour comprendre ou pour
+bidouiller à la main.
 
 ```json
-"grid":    { "tileWidth": 66, "tileHeight": 33, "wallHeight": 34 },
-"globals": { "weather": "...", "power": "...", "solar": "...",
-             "alarm": "...", "persons": [...], "favorites": [...] },
-"scenes":  [ { "id": "scene.cinema", "name": "Cinéma", "icon": "tv" } ],
-"floors":  [ { "id": "rdc", "name": "Rez-de-chaussée", "rooms": [ ... ] } ]
+{
+  "name": "Maison",
+  "grid": { "tileWidth": 66, "tileHeight": 33, "wallHeight": 34 },
+  "floors": [
+    {
+      "id": "rdc",
+      "name": "Rez-de-chaussée",
+      "rooms": [
+        {
+          "id": "salon",
+          "name": "Salon",
+          "icon": "sofa",
+          "rects": [[0, 0, 6, 5], [6, 0, 2, 3]],
+          "entities": ["light.salon", "climate.salon"]
+        }
+      ]
+    }
+  ]
+}
 ```
 
-`tileWidth`/`tileHeight` gardent un rapport 2:1 pour une isométrie classique ;
-`wallHeight` règle la hauteur des murs en pixels (34 laisse bien voir les sols).
+Une pièce est un **ensemble de cases de grille**, sérialisé en une liste de
+rectangles `[x, y, largeur, profondeur]`. Une pièce en L, c'est deux rectangles ;
+l'éditeur les recalcule automatiquement après chaque coup de pinceau. L'ancien
+format `x`/`y`/`w`/`h` reste accepté.
 
-Le plan modifié depuis l'application est stocké dans le navigateur. Pour le rendre
-définitif, recopiez-le dans `config/home.json` (« Revenir au plan d'origine » efface
-la version locale).
+Icônes de pièces : `sofa`, `bed`, `cooking`, `shower`, `door`, `laptop`, `car`,
+`stairs`, `tv`, `speaker`, `coffee`, `grid`.
 
 ---
 
@@ -163,17 +176,20 @@ la version locale).
 
 ```
 index.html                 Squelette de la page
-config/home.json           Le plan de la maison + les entités
+config/home.json           Plan de démonstration
 assets/css/base.css        Jetons de couleur, thèmes clair/sombre
-assets/css/layout.css      Rail, barre haute, scène, panneau, responsive
-assets/css/components.css  Plan isométrique, cartes, contrôles, modale
+assets/css/layout.css      Structure, mobile d'abord
+assets/css/components.css  Plan isométrique, cartes, contrôles, éditeur
 assets/js/app.js           Démarrage, vues, mises à jour temps réel
-assets/js/iso.js           Projection isométrique et rendu SVG du plan
+assets/js/geometry.js      Cases de grille, rectangles, murs, contours
+assets/js/iso.js           Projection isométrique et rendu SVG
+assets/js/editor.js        Éditeur de plan visuel
+assets/js/capabilities.js  Détection des fonctionnalités disponibles
 assets/js/cards.js         Une carte de contrôle par domaine Home Assistant
 assets/js/views.js         Panneau latéral et vues Pièces / Énergie / Sécurité
 assets/js/ha.js            Client WebSocket Home Assistant
 assets/js/demo.js          Serveur simulé (même interface que ha.js)
-assets/js/settings.js      Réglages, éditeur de plan, explorateur d'entités
+assets/js/settings.js      Connexion et sauvegarde du plan
 assets/js/store.js         État partagé et bus d'événements
 assets/js/icons.js         Jeu d'icônes SVG
 tools/build-single-file.js Fabrique dist/homeboard.html (version autonome)
@@ -187,12 +203,11 @@ reste de l'application ignore lequel des deux tourne.
 ## Limites connues
 
 - Les murs sont générés sur les deux côtés arrière de chaque pièce (vue « en coupe »
-  isométrique classique) : pas de portes ni de fenêtres dessinées.
-- Les pièces ne peuvent pas se chevaucher ; une forme en L se décrit avec deux
-  rectangles adjacents.
+  isométrique) : pas de portes ni de fenêtres dessinées.
+- Les pièces ne peuvent pas se chevaucher ; l'éditeur refuse un déplacement qui
+  créerait un conflit.
+- Le tri de profondeur se fait par pièce : une pièce concave qui en entoure une autre
+  peut s'afficher devant elle.
 - L'historique des courbes est construit pendant la session : à l'ouverture, les
-  graphiques se remplissent au fil des mesures (l'API `history` de Home Assistant
-  n'est pas encore interrogée).
-- Le thème suit la préférence système au premier lancement, puis le choix fait
-  dans l'application.
+  graphiques se remplissent au fil des mesures (l'API `history` n'est pas interrogée).
 - Prototype : testé sur Chromium et Firefox récents.

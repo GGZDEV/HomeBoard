@@ -43,6 +43,12 @@
   --iso-outline: rgba(255, 255, 255, 0.07);
   --tag-bg: rgba(9, 14, 24, 0.72);
   --tag-border: rgba(255, 255, 255, 0.1);
+
+  /* Éditeur de plan */
+  --ed-grid: rgba(255, 255, 255, 0.07);
+  --ed-axis: rgba(255, 255, 255, 0.16);
+  --ed-ink-s: 68%;
+  --ed-ink-l: 72%;
 }
 
 :root[data-theme='light'] {
@@ -80,9 +86,14 @@
   --iso-slab-top: #e8eef8;
   --iso-ground: #43547a;
   --iso-rim: rgba(255, 255, 255, 0.9);
-  --iso-outline: rgba(30, 50, 90, 0.1);
+  --iso-outline: rgba(30, 50, 90, 0.18);
   --tag-bg: rgba(255, 255, 255, 0.86);
   --tag-border: rgba(20, 40, 80, 0.1);
+
+  --ed-grid: rgba(20, 40, 80, 0.09);
+  --ed-axis: rgba(20, 40, 80, 0.2);
+  --ed-ink-s: 58%;
+  --ed-ink-l: 40%;
 }
 
 *, *::before, *::after { box-sizing: border-box; }

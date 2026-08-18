@@ -1,5 +1,7 @@
 /* ---------------------------------------------------------------------
-   HomeBoard — structure : rail, barre haute, scène, panneau
+   HomeBoard — structure, pensée pour l'écran tactile d'abord.
+   Base : téléphone et tablette en portrait. Les écrans larges sont traités
+   dans les media queries en bas de fichier.
    --------------------------------------------------------------------- */
 
 .app {
@@ -7,103 +9,86 @@
   z-index: 1;
   height: 100dvh;
   display: grid;
-  grid-template-columns: 92px minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
 }
-
-/* --- Rail de navigation ------------------------------------------------ */
-
-.rail {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 18px 10px;
-  border-right: 1px solid var(--border);
-  background: color-mix(in srgb, var(--bg-2) 55%, transparent);
-  backdrop-filter: blur(18px);
-}
-
-.brand-mark {
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  margin-bottom: 14px;
-  border-radius: 14px;
-  font-size: 22px;
-  color: #06101c;
-  background: linear-gradient(140deg, var(--accent), var(--accent-2));
-  box-shadow: 0 10px 26px -12px color-mix(in srgb, var(--accent) 80%, transparent);
-}
-
-.nav { display: flex; flex-direction: column; gap: 6px; width: 100%; }
-.rail-foot { margin-top: auto; display: flex; flex-direction: column; gap: 6px; width: 100%; }
-
-.nav-btn {
-  display: grid;
-  justify-items: center;
-  gap: 4px;
-  padding: 10px 4px;
-  border-radius: 14px;
-  color: var(--muted);
-  border: 1px solid transparent;
-  transition: background 0.18s, color 0.18s, border-color 0.18s;
-}
-.nav-btn:hover { background: var(--surface); color: var(--text); }
-.nav-btn.is-active {
-  color: var(--text);
-  background: var(--surface-2);
-  border-color: var(--border-strong);
-}
-.nav-btn.is-active .nav-ico { color: var(--accent); }
-.nav-ico { font-size: 21px; }
-.nav-label { font-size: 10.5px; letter-spacing: 0.02em; }
-
-/* --- Contenu ----------------------------------------------------------- */
 
 .content {
+  grid-row: 1;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
 }
 
+/* --- Barre haute -------------------------------------------------------- */
+
 .topbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px 14px;
+  padding: max(12px, env(safe-area-inset-top)) 14px 10px;
+}
+
+.brand { min-width: 0; }
+.brand-title { font-size: 20px; font-weight: 600; letter-spacing: -0.015em; }
+.brand-sub {
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: capitalize;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topbar-actions {
+  grid-row: 1;
+  grid-column: 2;
   display: flex;
   align-items: center;
-  gap: 20px;
-  padding: 18px 26px 14px;
-  flex-wrap: wrap;
+  gap: 6px;
 }
 
-.brand-title { font-size: 24px; font-weight: 600; letter-spacing: -0.015em; }
-.brand-sub { font-size: 13px; color: var(--muted); text-transform: capitalize; }
+.stat-chips {
+  grid-row: 2;
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+.stat-chips::-webkit-scrollbar { display: none; }
+/* En édition, l'écran doit d'abord servir au plan. */
+.app.is-editing .stat-chips,
+.app.is-editing .brand-sub { display: none; }
 
-.stat-chips { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
-
-.topbar-actions { display: flex; align-items: center; gap: 10px; }
+/* --- Espace de travail -------------------------------------------------- */
 
 .workspace {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 372px;
-  gap: 18px;
-  padding: 0 22px 22px;
   min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 0 12px 16px;
 }
 
-.view-root { min-width: 0; min-height: 0; display: flex; }
+.view-root { display: flex; min-width: 0; }
 
-/* --- Scène isométrique ------------------------------------------------- */
+/* --- Scène isométrique -------------------------------------------------- */
 
 .stage {
   flex: 1;
   min-width: 0;
+  height: 54dvh;
+  min-height: 300px;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  gap: 12px;
-  padding: 14px;
-  border-radius: 26px;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 22px;
   border: 1px solid var(--border);
   background:
     radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 60%),
@@ -113,40 +98,39 @@
   overflow: hidden;
 }
 
-.stage-top { display: flex; align-items: center; gap: 12px; }
+.stage-top { display: flex; align-items: center; gap: 8px; }
 .stage-tools { margin-left: auto; display: flex; gap: 6px; }
 
 .floor-switch {
   display: flex;
-  gap: 6px;
+  gap: 4px;
+  padding: 4px;
   max-width: 100%;
   overflow-x: auto;
   scrollbar-width: none;
-  padding: 4px;
   border-radius: 14px;
   background: var(--surface);
   border: 1px solid var(--border);
 }
+.floor-switch[hidden] { display: none; }
 
 .floor-btn {
-  position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
+  gap: 7px;
+  padding: 9px 14px;
+  min-height: 40px;
   border-radius: 11px;
   font-size: 13px;
   white-space: nowrap;
   color: var(--muted);
   transition: background 0.18s, color 0.18s;
 }
-.floor-btn:hover { color: var(--text); }
 .floor-btn.is-active {
   color: var(--text);
   background: color-mix(in srgb, var(--accent) 16%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
 }
-.floor-ico { font-size: 15px; opacity: 0.75; }
 .floor-dot {
   width: 7px; height: 7px; border-radius: 50%;
   background: var(--warm);
@@ -159,15 +143,18 @@
   display: flex;
   gap: 8px;
   overflow-x: auto;
+  scrollbar-width: none;
   padding-bottom: 2px;
-  scrollbar-width: thin;
 }
+.scene-bar[hidden] { display: none; }
+.scene-bar::-webkit-scrollbar { display: none; }
 
 .scene-btn {
   display: inline-flex;
   align-items: center;
   gap: 9px;
-  padding: 10px 16px;
+  padding: 12px 16px;
+  min-height: 46px;
   white-space: nowrap;
   border-radius: 14px;
   font-size: 13.5px;
@@ -176,25 +163,15 @@
   border: 1px solid var(--border);
   transition: transform 0.16s, background 0.18s, border-color 0.18s;
 }
-.scene-btn:hover {
-  transform: translateY(-2px);
-  background: var(--surface-2);
-  border-color: var(--border-strong);
-}
-.scene-btn:active { transform: translateY(0); }
+.scene-btn:active { transform: scale(0.97); }
 .scene-ico { font-size: 17px; color: var(--accent); }
 
-/* --- Panneau latéral --------------------------------------------------- */
+/* --- Panneau : feuille du bas sur mobile -------------------------------- */
 
-.panel {
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-  padding-right: 4px;
-}
+.panel { min-height: 0; }
+.panel:empty { display: none; }
 
-.panel-inner { display: flex; flex-direction: column; gap: 14px; padding-bottom: 12px; }
+.panel-inner { display: flex; flex-direction: column; gap: 14px; padding-bottom: 8px; }
 
 .panel-head { display: flex; align-items: center; gap: 12px; }
 .panel-title { font-size: 19px; font-weight: 600; }
@@ -211,25 +188,50 @@
   border: 1px solid var(--border);
 }
 
-/* --- Vues secondaires -------------------------------------------------- */
+/* Pièce sélectionnée : le panneau devient une feuille remontante. */
+.app.has-room .panel {
+  position: fixed;
+  z-index: 40;
+  inset-inline: 0;
+  bottom: 0;
+  max-height: 76dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 8px 14px calc(88px + env(safe-area-inset-bottom));
+  border-radius: 24px 24px 0 0;
+  background: color-mix(in srgb, var(--surface-solid) 94%, transparent);
+  backdrop-filter: blur(26px);
+  border-top: 1px solid var(--border-strong);
+  box-shadow: 0 -24px 60px -30px rgba(0, 0, 0, 0.7);
+  animation: sheet-up 0.26s cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+.app.has-room .panel::before {
+  content: '';
+  display: block;
+  width: 42px; height: 4px;
+  margin: 2px auto 10px;
+  border-radius: 999px;
+  background: var(--border-strong);
+}
+@keyframes sheet-up { from { transform: translateY(16px); opacity: 0; } }
+
+/* --- Vues secondaires --------------------------------------------------- */
 
 .view {
   flex: 1;
   min-width: 0;
-  overflow-y: auto;
-  scrollbar-width: thin;
   display: flex;
   flex-direction: column;
-  gap: 22px;
-  padding: 4px 6px 20px 0;
+  gap: 20px;
+  padding-bottom: 8px;
 }
 
-.view-head h2 { font-size: 26px; font-weight: 600; letter-spacing: -0.02em; }
-.view-head p { color: var(--muted); font-size: 14px; margin-top: 2px; }
+.view-head h2 { font-size: 23px; font-weight: 600; letter-spacing: -0.02em; }
+.view-head p { color: var(--muted); font-size: 13.5px; margin-top: 2px; }
 
 .section { display: flex; flex-direction: column; gap: 12px; }
 .section-title {
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 600;
   letter-spacing: 0.09em;
   text-transform: uppercase;
@@ -237,48 +239,125 @@
 }
 
 .grid { display: grid; gap: 14px; }
-.grid--2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
-.card-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(238px, 1fr)); }
+.grid--2 { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.card-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
 .card-stack { display: flex; flex-direction: column; gap: 12px; }
-.tile-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); }
+.tile-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
 
-/* --- Adaptatif --------------------------------------------------------- */
+/* --- Barre de navigation ------------------------------------------------ */
 
-@media (max-width: 1180px) {
-  .workspace { grid-template-columns: minmax(0, 1fr) 320px; }
+.rail {
+  grid-row: 2;
+  position: relative;
+  z-index: 50; /* la barre reste au-dessus des feuilles remontantes */
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-2) 88%, transparent);
+  backdrop-filter: blur(24px);
 }
 
-@media (max-width: 940px) {
-  body { overflow: auto; }
-  .app { grid-template-columns: 1fr; grid-template-rows: auto auto; height: auto; min-height: 100dvh; }
+.brand-mark { display: none; }
+
+.nav { display: flex; flex: 1; gap: 2px; }
+
+.nav-btn {
+  flex: 1;
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  padding: 8px 4px;
+  min-height: 52px;
+  border-radius: 14px;
+  color: var(--muted);
+  border: 1px solid transparent;
+  transition: background 0.18s, color 0.18s;
+}
+.nav-btn.is-active { color: var(--text); background: var(--surface-2); }
+.nav-btn.is-active .nav-ico { color: var(--accent); }
+.nav-ico { font-size: 21px; }
+.nav-label { font-size: 10.5px; letter-spacing: 0.01em; }
+
+/* --- Écrans larges ------------------------------------------------------ */
+
+@media (min-width: 900px) {
+  .app {
+    grid-template-columns: 96px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
 
   .rail {
-    position: sticky;
-    top: 0;
-    z-index: 30;
-    flex-direction: row;
-    justify-content: space-between;
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-    padding: 10px 14px;
+    grid-row: 1;
+    grid-column: 1;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 18px 10px;
+    border-top: none;
+    border-right: 1px solid var(--border);
   }
-  .brand-mark { margin: 0; width: 38px; height: 38px; font-size: 19px; }
-  .nav { flex-direction: row; width: auto; }
-  .rail-foot { flex-direction: row; width: auto; margin: 0; }
-  .nav-btn { padding: 8px 12px; }
-  .nav-label { display: none; }
+  .brand-mark {
+    display: grid;
+    place-items: center;
+    width: 44px; height: 44px;
+    margin-bottom: 14px;
+    border-radius: 14px;
+    font-size: 22px;
+    color: #06101c;
+    background: linear-gradient(140deg, var(--accent), var(--accent-2));
+    box-shadow: 0 10px 26px -12px color-mix(in srgb, var(--accent) 80%, transparent);
+  }
+  .nav { flex-direction: column; flex: none; width: 100%; gap: 6px; }
+  .nav-btn { min-height: 0; padding: 10px 4px; }
 
-  .topbar { padding: 16px 16px 10px; }
-  .topbar { align-items: flex-start; }
-  .brand { flex: 1; }
-  .topbar-actions { order: 1; }
-  .stat-chips { order: 2; margin-left: 0; width: 100%; }
+  .content { grid-row: 1; grid-column: 2; }
+
+  .topbar {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    padding: 18px 24px 12px;
+  }
+  .brand-title { font-size: 24px; }
+  .stat-chips { grid-row: 1; grid-column: 2; justify-content: flex-end; }
+  .topbar-actions { grid-column: 3; }
 
   .workspace {
-    grid-template-columns: 1fr;
-    padding: 0 14px 20px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 370px;
+    gap: 18px;
+    padding: 0 22px 22px;
+    overflow: hidden;
   }
-  .stage { min-height: 56dvh; }
-  .panel { overflow: visible; max-height: none; }
-  .view { overflow: visible; }
+  .view-root { min-height: 0; }
+  .stage { height: auto; }
+  .view { overflow-y: auto; scrollbar-width: thin; padding-right: 6px; }
+
+  .panel {
+    overflow-y: auto;
+    scrollbar-width: thin;
+    padding-right: 4px;
+  }
+  .app.has-room .panel {
+    position: static;
+    max-height: none;
+    padding: 0 4px 0 0;
+    border: none;
+    border-radius: 0;
+    background: none;
+    backdrop-filter: none;
+    box-shadow: none;
+    animation: none;
+  }
+  .app.has-room .panel::before { display: none; }
+
+  .app.is-editing .workspace { grid-template-columns: minmax(0, 1fr); }
+  .app.is-editing .stat-chips,
+  .app.is-editing .brand-sub { display: flex; }
+  .app.is-editing .brand-sub { display: block; }
+  .tile-grid { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); }
+}
+
+@media (min-width: 1500px) {
+  .workspace { grid-template-columns: minmax(0, 1fr) 400px; }
 }

@@ -12,7 +12,10 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const CSS = ['base', 'layout', 'components'];
 // Ordre de dépendance : chaque module ne référence que les précédents.
-const JS = ['store', 'icons', 'cards', 'iso', 'demo', 'ha', 'views', 'settings', 'app'];
+const JS = [
+  'store', 'icons', 'cards', 'geometry', 'capabilities',
+  'iso', 'demo', 'ha', 'editor', 'views', 'settings', 'app'
+];
 
 const read = (...p) => fs.readFileSync(path.join(ROOT, ...p), 'utf8');
 

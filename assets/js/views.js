@@ -1,6 +1,6 @@
 /** Panneau latéral et vues principales (pièces, énergie, sécurité). */
 import { store } from './store.js';
-import { icon, iconForEntity } from './icons.js';
+import { icon } from './icons.js';
 import { createCard, h, friendlyName, stateLabel, formatNumber, sparkline } from './cards.js';
 import { summarize } from './iso.js';
 
@@ -99,21 +99,43 @@ function roomPanel(ctx, host) {
 }
 
 function overviewPanel(ctx, host) {
-  const g = ctx.config.globals || {};
-  const favorites = (g.favorites || []).filter((id) => store.get(id));
+  const caps = ctx.caps;
+  const favorites = (caps.favorites || []).filter((id) => store.get(id));
+  const roomCount = ctx.config.floors.reduce((n, f) => n + f.rooms.length, 0);
+
+  // Rien n'est affiché « au cas où » : chaque carte dépend d'entités trouvées.
+  const cards = [
+    caps.hasWeather ? weatherCard(caps.weather, caps.outdoor) : null,
+    caps.hasEnergy ? energyCard(caps.power, caps.solar) : null,
+    caps.hasPresence ? presenceCard(caps.persons) : null,
+    caps.alarm ? alarmCard(caps.alarm) : null,
+    favorites.length ? section('Favoris', h('div', { class: 'card-stack' }, favorites.map((id) => host.card(id)))) : null
+  ].filter(Boolean);
+
+  if (!cards.length) {
+    cards.push(h('div', { class: 'empty-state' }, [
+      h('span', { class: 'empty-ico', html: icon(roomCount ? 'device' : 'floorplan') }),
+      h('h3', { text: roomCount ? 'Aucun appareil rattaché' : 'Votre plan est vide' }),
+      h('p', {
+        text: roomCount
+          ? 'Ouvrez l’éditeur pour placer vos appareils dans les pièces.'
+          : 'Ouvrez l’éditeur pour dessiner vos pièces et poser vos appareils.'
+      }),
+      h('button', {
+        class: 'btn', type: 'button', html: `${icon('floorplan')}<span>Ouvrir l’éditeur</span>`,
+        onclick: () => ctx.setView('editor')
+      })
+    ]));
+  }
 
   return h('div', { class: 'panel-inner' }, [
     h('header', { class: 'panel-head' }, [
       h('div', {}, [
         h('h2', { class: 'panel-title', text: 'Vue d’ensemble' }),
-        h('p', { class: 'panel-sub', text: 'Cliquez sur une pièce du plan pour la piloter' })
+        h('p', { class: 'panel-sub', text: 'Touchez une pièce du plan pour la piloter' })
       ])
     ]),
-    weatherCard(g.weather, g.outdoorTemperature),
-    energyCard(g.power, g.solar),
-    presenceCard(g.persons),
-    alarmCard(g.alarm),
-    favorites.length ? section('Favoris', h('div', { class: 'card-stack' }, favorites.map((id) => host.card(id)))) : null
+    ...cards
   ]);
 }
 
@@ -231,6 +253,22 @@ function alarmCard(alarmId) {
 // --- Vues principales ----------------------------------------------------
 
 export function renderRoomsView(container, ctx, host) {
+  if (!ctx.config.floors.some((f) => f.rooms.length)) {
+    container.replaceChildren(h('div', { class: 'view' }, [
+      viewHead('Pièces', 'Aucune pièce pour l’instant'),
+      h('div', { class: 'empty-state' }, [
+        h('span', { class: 'empty-ico', html: icon('floorplan') }),
+        h('h3', { text: 'Dessinez votre maison' }),
+        h('p', { text: 'L’éditeur de plan permet de poser vos pièces en quelques gestes.' }),
+        h('button', {
+          class: 'btn', type: 'button', html: `${icon('floorplan')}<span>Ouvrir l’éditeur</span>`,
+          onclick: () => ctx.setView('editor')
+        })
+      ])
+    ]));
+    return;
+  }
+
   const sections = ctx.config.floors.map((floor) => section(
     floor.name,
     h('div', { class: 'tile-grid' }, floor.rooms.map((room) => {
@@ -254,9 +292,9 @@ export function renderRoomsView(container, ctx, host) {
 }
 
 export function renderEnergyView(container, ctx, host) {
-  const g = ctx.config.globals || {};
-  const p = Number(store.get(g.power)?.state);
-  const s = Number(store.get(g.solar)?.state);
+  const caps = ctx.caps;
+  const p = Number(store.get(caps.power)?.state);
+  const s = Number(store.get(caps.solar)?.state);
   const ratio = Number.isFinite(p) && p > 0 ? Math.min(1, (Number.isFinite(s) ? s : 0) / p) : 0;
 
   const consumers = Object.values(store.entities)
@@ -266,19 +304,19 @@ export function renderEnergyView(container, ctx, host) {
   container.replaceChildren(h('div', { class: 'view' }, [
     viewHead('Énergie', 'Consommation en direct et part d’autoproduction'),
     h('div', { class: 'grid grid--2' }, [
-      h('article', { class: 'card card--gauge' }, [
+      caps.power && caps.solar ? h('article', { class: 'card card--gauge' }, [
         h('div', { class: 'gauge', html: gaugeSvg(ratio) }),
         h('div', { class: 'gauge-legend' }, [
           h('strong', { text: `${Math.round(ratio * 100)} %` }),
           h('span', { text: 'de la consommation couverte par le solaire' })
         ])
-      ]),
+      ]) : null,
       h('div', { class: 'card-stack' }, [
-        energyRow('Consommation instantanée', p, 'W', 'consumption', store.history[g.power]),
-        energyRow('Production solaire', s, 'W', 'solar', store.history[g.solar]),
-        energyRow('Extérieur', Number(store.get(g.outdoorTemperature)?.state), '°C', 'outdoor',
-          store.history[g.outdoorTemperature])
-      ].map((row) => h('article', { class: 'card card--metric' }, [row])))
+        caps.power ? energyRow('Consommation instantanée', p, 'W', 'consumption', store.history[caps.power]) : null,
+        caps.solar ? energyRow('Production solaire', s, 'W', 'solar', store.history[caps.solar]) : null,
+        caps.outdoor ? energyRow('Extérieur', Number(store.get(caps.outdoor)?.state), '°C', 'outdoor',
+          store.history[caps.outdoor]) : null
+      ].filter(Boolean).map((row) => h('article', { class: 'card card--metric' }, [row])))
     ]),
     section(`Appareils actifs (${consumers.length})`,
       h('div', { class: 'card-grid' }, consumers.map((e) => host.card(e.entity_id))))
@@ -286,22 +324,18 @@ export function renderEnergyView(container, ctx, host) {
 }
 
 export function renderSecurityView(container, ctx, host) {
-  const g = ctx.config.globals || {};
-  const openings = Object.values(store.entities).filter(
-    (e) => e.entity_id.startsWith('binary_sensor.')
-      && ['door', 'garage_door', 'window', 'opening'].includes(e.attributes?.device_class)
-  );
-  const locks = Object.values(store.entities).filter((e) => e.entity_id.startsWith('lock.'));
-  const motions = Object.values(store.entities).filter(
-    (e) => e.attributes?.device_class === 'motion' || e.attributes?.device_class === 'occupancy'
-  );
+  const caps = ctx.caps;
 
   container.replaceChildren(h('div', { class: 'view' }, [
     viewHead('Sécurité', 'Ouvertures, serrures et détecteurs'),
-    h('div', { class: 'grid grid--2' }, [alarmCard(g.alarm), presenceCard(g.persons)].filter(Boolean)),
-    locks.length ? section('Serrures', h('div', { class: 'card-stack' }, locks.map((e) => host.card(e.entity_id)))) : null,
-    openings.length ? section('Ouvertures', h('div', { class: 'card-grid' }, openings.map((e) => host.card(e.entity_id)))) : null,
-    motions.length ? section('Détecteurs de mouvement', h('div', { class: 'card-grid' }, motions.map((e) => host.card(e.entity_id)))) : null
+    h('div', { class: 'grid grid--2' },
+      [caps.alarm ? alarmCard(caps.alarm) : null, caps.hasPresence ? presenceCard(caps.persons) : null].filter(Boolean)),
+    caps.locks.length
+      ? section('Serrures', h('div', { class: 'card-stack' }, caps.locks.map((id) => host.card(id)))) : null,
+    caps.openings.length
+      ? section('Ouvertures', h('div', { class: 'card-grid' }, caps.openings.map((id) => host.card(id)))) : null,
+    caps.motions.length
+      ? section('Détecteurs de mouvement', h('div', { class: 'card-grid' }, caps.motions.map((id) => host.card(id)))) : null
   ]));
 }
 

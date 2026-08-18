@@ -1,27 +1,34 @@
 /** Point d'entrée : assemble le tableau de bord et branche le backend. */
 import { store, bus } from './store.js';
 import { icon } from './icons.js';
-import { h, friendlyName, formatNumber } from './cards.js';
+import { h, formatNumber } from './cards.js';
 import { IsoStage, summarize } from './iso.js';
 import { DemoBackend } from './demo.js';
 import { HomeAssistantBackend } from './ha.js';
-import { CardHost, renderPanel, renderRoomsView, renderEnergyView, renderSecurityView, WEATHER } from './views.js';
+import { detectCapabilities } from './capabilities.js';
+import { PlanEditor } from './editor.js';
+import {
+  CardHost, renderPanel, renderRoomsView, renderEnergyView, renderSecurityView, WEATHER
+} from './views.js';
 import { loadSettings, saveSettings, applyTheme, openSettings, validateConfig } from './settings.js';
 
-const NAV = [
-  { id: 'home', label: 'Maison', icon: 'home' },
-  { id: 'rooms', label: 'Pièces', icon: 'grid' },
-  { id: 'energy', label: 'Énergie', icon: 'zap' },
-  { id: 'security', label: 'Sécurité', icon: 'shield' }
-];
+const NAV = {
+  home: { label: 'Maison', icon: 'home' },
+  rooms: { label: 'Pièces', icon: 'grid' },
+  energy: { label: 'Énergie', icon: 'zap' },
+  security: { label: 'Sécurité', icon: 'shield' },
+  editor: { label: 'Éditeur', icon: 'floorplan' }
+};
 
 const app = {
   config: null,
   defaultConfigText: '',
+  caps: null,
   view: 'home',
   floorId: null,
   roomId: null,
   stage: null,
+  editor: null,
   host: new CardHost(),
   homeNode: null,
   dirty: false,
@@ -30,6 +37,7 @@ const app = {
 
 const ctx = {
   get config() { return app.config; },
+  get caps() { return app.caps; },
   get floor() { return app.config.floors.find((f) => f.id === app.floorId) || app.config.floors[0]; },
   get floorId() { return app.floorId; },
   get roomId() { return app.roomId; },
@@ -41,12 +49,6 @@ const ctx = {
 
 // --- Démarrage -----------------------------------------------------------
 
-boot().catch((err) => {
-  console.error(err);
-  document.getElementById('boot-error').textContent = `Erreur de démarrage : ${err.message}`;
-  document.getElementById('boot-error').hidden = false;
-});
-
 async function boot() {
   const settings = loadSettings();
   const theme = applyTheme(settings.theme);
@@ -56,21 +58,29 @@ async function boot() {
   app.defaultConfigText = await response.text();
 
   app.config = resolveConfig(settings);
-  app.floorId = app.config.floors[0].id;
+  app.floorId = app.config.floors[0]?.id || null;
+  // Capacités « à vide » : l'interface doit tenir debout avant la connexion.
+  refreshCapabilities();
 
   buildChrome();
   renderThemeIcon(theme);
   await connect(settings);
+  refreshCapabilities();
   renderEverything();
 
   bus.on('entity', onEntityChange);
+  bus.on('entities', refreshCapabilities);
   bus.on('status', renderStatus);
   bus.on('toast', showToast);
+  window.addEventListener('homeboard-toast', (ev) => showToast({ text: ev.detail.text }));
 
   window.addEventListener('keydown', (ev) => {
     if (ev.key === 'Escape' && app.roomId) selectRoom(null);
   });
-  window.addEventListener('resize', () => { if (app.stage) app.stage.applyCamera(); });
+  window.addEventListener('resize', () => {
+    app.stage?.applyCamera();
+    app.editor?.fitCamera();
+  });
 }
 
 function resolveConfig(settings) {
@@ -85,6 +95,10 @@ function resolveConfig(settings) {
   return JSON.parse(app.defaultConfigText);
 }
 
+function persistConfig() {
+  saveSettings({ configOverride: app.config });
+}
+
 async function connect(settings) {
   store.backend?.disconnect?.();
   const useLive = settings.mode === 'live' && settings.url && settings.token;
@@ -95,48 +109,45 @@ async function connect(settings) {
   try {
     await backend.connect();
   } catch (err) {
-    if (useLive) {
-      showToast({ type: 'error', text: `Home Assistant injoignable — bascule en mode démo` });
-      store.backend = new DemoBackend();
-      await store.backend.connect();
-    } else {
-      throw err;
-    }
+    if (!useLive) throw err;
+    showToast({ type: 'error', text: 'Home Assistant injoignable — bascule en mode démo' });
+    store.backend = new DemoBackend();
+    await store.backend.connect();
   }
 }
+
+/** Recalcule ce que l'installation permet d'afficher. */
+function refreshCapabilities() {
+  const before = app.caps?.views.join(',');
+  app.caps = detectCapabilities(store.entities, app.config);
+  if (before && before !== app.caps.views.join(',')) {
+    renderNav();
+    if (!availableViews().includes(app.view)) setView('home');
+  }
+}
+
+const availableViews = () => [...(app.caps?.views || ['home', 'rooms']), 'editor'];
 
 // --- Squelette de l'interface -------------------------------------------
 
 function buildChrome() {
+  app.homeNode = buildHomeView();
+  renderNav();
+  setView('home');
+}
+
+function renderNav() {
   const rail = document.getElementById('rail');
   rail.replaceChildren(
     h('div', { class: 'brand-mark', html: icon('home') }),
-    h('nav', { class: 'nav' }, NAV.map((item) => h('button', {
-      class: 'nav-btn', type: 'button', dataset: { view: item.id }, title: item.label,
-      onclick: () => setView(item.id)
+    h('nav', { class: 'nav', 'aria-label': 'Navigation principale' }, availableViews().map((view) => h('button', {
+      class: `nav-btn ${view === app.view ? 'is-active' : ''}`, type: 'button',
+      dataset: { view }, title: NAV[view].label, onclick: () => setView(view)
     }, [
-      h('span', { class: 'nav-ico', html: icon(item.icon) }),
-      h('span', { class: 'nav-label', text: item.label })
-    ]))),
-    h('div', { class: 'rail-foot' }, [
-      h('button', {
-        class: 'nav-btn', type: 'button', title: 'Thème clair / sombre', id: 'theme-btn',
-        onclick: toggleTheme
-      }, [
-        h('span', { class: 'nav-ico', html: icon('moon') }),
-        h('span', { class: 'nav-label', text: 'Thème' })
-      ]),
-      h('button', {
-        class: 'nav-btn', type: 'button', title: 'Réglages', onclick: showSettings
-      }, [
-        h('span', { class: 'nav-ico', html: icon('settings') }),
-        h('span', { class: 'nav-label', text: 'Réglages' })
-      ])
-    ])
+      h('span', { class: 'nav-ico', html: icon(NAV[view].icon) }),
+      h('span', { class: 'nav-label', text: NAV[view].label })
+    ])))
   );
-
-  app.homeNode = buildHomeView();
-  setView('home');
 }
 
 function buildHomeView() {
@@ -162,7 +173,9 @@ function buildHomeView() {
 }
 
 function toolButton(name, label, onClick) {
-  return h('button', { class: 'ibtn', type: 'button', title: label, 'aria-label': label, html: icon(name), onclick: onClick });
+  return h('button', {
+    class: 'ibtn', type: 'button', title: label, 'aria-label': label, html: icon(name), onclick: onClick
+  });
 }
 
 // --- Rendu ---------------------------------------------------------------
@@ -181,37 +194,70 @@ function renderView() {
   for (const btn of document.querySelectorAll('.nav-btn[data-view]')) {
     btn.classList.toggle('is-active', btn.dataset.view === app.view);
   }
+  document.getElementById('app').classList.toggle('is-editing', app.view === 'editor');
 
-  if (app.view === 'home') {
-    root.replaceChildren(app.homeNode);
-    renderFloors();
-    renderScenes();
-    app.stage.render(ctx.floor, ctx);
-    app.stage.select(app.roomId);
-  } else if (app.view === 'rooms') {
-    renderRoomsView(root, ctx, app.host);
-  } else if (app.view === 'energy') {
-    renderEnergyView(root, ctx, app.host);
-  } else if (app.view === 'security') {
-    renderSecurityView(root, ctx, app.host);
+  if (app.view !== 'editor') app.editor = null;
+
+  switch (app.view) {
+    case 'home':
+      root.replaceChildren(app.homeNode);
+      renderFloors();
+      renderScenes();
+      app.stage.render(ctx.floor, ctx);
+      app.stage.select(app.roomId);
+      break;
+    case 'rooms':
+      renderRoomsView(root, ctx, app.host);
+      break;
+    case 'energy':
+      renderEnergyView(root, ctx, app.host);
+      break;
+    case 'security':
+      renderSecurityView(root, ctx, app.host);
+      break;
+    case 'editor':
+      app.editor = new PlanEditor(root, {
+        config: app.config,
+        entities: store.entities,
+        onChange: () => {
+          persistConfig();
+          refreshCapabilities();
+          renderTopbar();
+        },
+        onDone: () => {
+          app.roomId = null;
+          setView('home');
+          showToast({ text: 'Plan enregistré.' });
+        }
+      });
+      break;
+    default:
+      break;
   }
 }
 
 function renderPanelNow() {
-  renderPanel(document.getElementById('panel'), ctx, app.host);
+  const panel = document.getElementById('panel');
+  if (app.view === 'editor') {
+    panel.replaceChildren();
+    document.getElementById('app').classList.remove('has-room');
+    return;
+  }
+  renderPanel(panel, ctx, app.host);
   document.getElementById('app').classList.toggle('has-room', Boolean(app.roomId));
 }
 
 function renderFloors() {
   const holder = document.getElementById('floors');
   if (!holder) return;
-  holder.replaceChildren(...app.config.floors.map((floor) => {
+  const floors = app.config.floors;
+  holder.hidden = floors.length < 2;
+  holder.replaceChildren(...floors.map((floor) => {
     const lit = floor.rooms.reduce((n, r) => n + summarize(r, store.entities).lightsOn, 0);
     return h('button', {
       class: `floor-btn ${floor.id === app.floorId ? 'is-active' : ''}`, type: 'button',
       onclick: () => setFloor(floor.id)
     }, [
-      h('span', { class: 'floor-ico', html: icon('layers') }),
       h('span', { class: 'floor-name', text: floor.name }),
       lit ? h('span', { class: 'floor-dot', title: `${lit} lumière(s) allumée(s)` }) : null
     ]);
@@ -221,13 +267,13 @@ function renderFloors() {
 function renderScenes() {
   const holder = document.getElementById('scenes');
   if (!holder) return;
-  const scenes = app.config.scenes || [];
+  const scenes = app.caps?.scenes || [];
+  holder.hidden = !scenes.length;
   holder.replaceChildren(...scenes.map((scene) => h('button', {
     class: 'scene-btn', type: 'button',
     onclick: () => {
-      const domain = scene.id.split('.')[0];
-      store.call(domain, 'turn_on', { entity_id: scene.id });
-      bus.emit('toast', { type: 'ok', text: `Scène « ${scene.name} » activée` });
+      store.call(scene.id.split('.')[0], 'turn_on', { entity_id: scene.id });
+      showToast({ text: `Scène « ${scene.name} » activée` });
     }
   }, [
     h('span', { class: 'scene-ico', html: icon(scene.icon || 'zap') }),
@@ -236,45 +282,54 @@ function renderScenes() {
 }
 
 function renderTopbar() {
-  const g = app.config.globals || {};
-  const weather = store.get(g.weather);
+  const caps = app.caps || {};
+  const weather = store.get(caps.weather);
   const [wLabel, wIcon] = WEATHER[weather?.state] || ['Météo', 'cloud'];
-  const outdoor = Number(weather?.attributes?.temperature ?? store.get(g.outdoorTemperature)?.state);
-  const power = Number(store.get(g.power)?.state);
+  const outdoor = Number(weather?.attributes?.temperature ?? store.get(caps.outdoor)?.state);
+  const power = Number(store.get(caps.power)?.state);
   const litCount = Object.values(store.entities)
     .filter((e) => e.entity_id.startsWith('light.') && e.state === 'on').length;
-  const home = (g.persons || []).map((id) => store.get(id)).filter((p) => p?.state === 'home').length;
-  const alarm = store.get(g.alarm);
+  const home = (caps.persons || []).map((id) => store.get(id)).filter((p) => p?.state === 'home').length;
+  const alarm = store.get(caps.alarm);
+
+  // Chaque puce n'apparaît que si l'installation la justifie.
+  const chips = [
+    caps.hasWeather && Number.isFinite(outdoor) ? chip(wIcon, `${formatNumber(outdoor)}°`, wLabel) : null,
+    litCount ? chip('bulb', String(litCount), litCount > 1 ? 'lumières' : 'lumière', true) : null,
+    caps.power && Number.isFinite(power) ? chip('zap', `${formatNumber(power)} W`, 'consommation') : null,
+    caps.hasPresence ? chip('person', String(home), 'à la maison', home > 0) : null,
+    alarm ? chip('shield', alarm.state.startsWith('armed') ? 'Armée' : 'Off', 'alarme',
+      alarm.state.startsWith('armed')) : null
+  ].filter(Boolean);
 
   document.getElementById('topbar').replaceChildren(
     h('div', { class: 'brand' }, [
       h('h1', { class: 'brand-title', text: app.config.name || 'Maison' }),
       h('p', { class: 'brand-sub', text: `${greeting()} · ${dateLabel()}` })
     ]),
-    h('div', { class: 'stat-chips' }, [
-      chip(wIcon, Number.isFinite(outdoor) ? `${formatNumber(outdoor)}°` : '—', wLabel),
-      chip('bulb', String(litCount), litCount > 1 ? 'lumières allumées' : 'lumière allumée', litCount > 0),
-      chip('zap', Number.isFinite(power) ? `${formatNumber(power)} W` : '—', 'consommation'),
-      chip('person', String(home), 'à la maison', home > 0),
-      alarm ? chip('shield', alarm.state.startsWith('armed') ? 'Armée' : 'Off', 'alarme',
-        alarm.state.startsWith('armed')) : null
-    ]),
+    chips.length ? h('div', { class: 'stat-chips' }, chips) : null,
     h('div', { class: 'topbar-actions' }, [
       h('button', {
-        class: 'status', id: 'status', type: 'button', onclick: showSettings
-      }, [h('span', { class: 'status-dot' }), h('span', { class: 'status-text' })])
+        class: 'status', id: 'status', type: 'button', onclick: showSettings, 'aria-label': 'État de la connexion'
+      }, [h('span', { class: 'status-dot' }), h('span', { class: 'status-text' })]),
+      h('button', {
+        class: 'ibtn', id: 'theme-btn', type: 'button', title: 'Thème clair / sombre',
+        'aria-label': 'Basculer le thème', html: icon('moon'), onclick: toggleTheme
+      }),
+      h('button', {
+        class: 'ibtn', type: 'button', title: 'Réglages', 'aria-label': 'Réglages',
+        html: icon('settings'), onclick: showSettings
+      })
     ])
   );
+  renderThemeIcon(document.documentElement.dataset.theme);
   renderStatus({ status: store.status, message: store.statusMessage });
 }
 
 function chip(iconName, value, label, active = false) {
   return h('div', { class: `chip-stat ${active ? 'is-active' : ''}` }, [
     h('span', { class: 'chip-ico', html: icon(iconName) }),
-    h('div', { class: 'chip-body' }, [
-      h('strong', { text: value }),
-      h('span', { text: label })
-    ])
+    h('div', { class: 'chip-body' }, [h('strong', { text: value }), h('span', { text: label })])
   ]);
 }
 
@@ -289,11 +344,15 @@ function renderStatus({ status, message }) {
   node.querySelector('.status-text').textContent = labels[status] || status;
 }
 
+function renderThemeIcon(theme) {
+  const node = document.querySelector('#theme-btn');
+  if (node) node.innerHTML = icon(theme === 'light' ? 'sun' : 'moon');
+}
+
 // --- Interactions --------------------------------------------------------
 
 function setView(view) {
-  app.view = view;
-  if (view !== 'home') app.roomId = app.roomId; // la sélection reste mémorisée
+  app.view = availableViews().includes(view) ? view : 'home';
   renderView();
   renderPanelNow();
 }
@@ -311,17 +370,15 @@ function setFloor(floorId) {
 }
 
 function selectRoom(roomId) {
-  // Sélection depuis une autre vue : on bascule sur le plan.
   if (roomId && !ctx.floor.rooms.some((r) => r.id === roomId)) {
     const floor = app.config.floors.find((f) => f.rooms.some((r) => r.id === roomId));
     if (floor) app.floorId = floor.id;
   }
   app.roomId = app.roomId === roomId ? null : roomId;
-  app.stage?.select(app.roomId);
   app.host.reset();
+  app.stage?.select(app.roomId);
   renderPanelNow();
-  if (app.view === 'home') return;
-  setView('home');
+  if (app.view !== 'home') setView('home');
 }
 
 function toggleTheme() {
@@ -331,22 +388,22 @@ function toggleTheme() {
   renderThemeIcon(next);
 }
 
-function renderThemeIcon(theme) {
-  const node = document.querySelector('#theme-btn .nav-ico');
-  if (node) node.innerHTML = icon(theme === 'light' ? 'sun' : 'moon');
-}
-
 function showSettings() {
   openSettings({
+    currentConfig: app.config,
     defaultConfigText: app.defaultConfigText,
     onApply: async ({ reconnect, reloadConfig } = {}) => {
       const settings = loadSettings();
       if (reloadConfig) {
         app.config = resolveConfig(settings);
-        if (!app.config.floors.some((f) => f.id === app.floorId)) app.floorId = app.config.floors[0].id;
+        if (!app.config.floors.some((f) => f.id === app.floorId)) {
+          app.floorId = app.config.floors[0]?.id || null;
+        }
         app.roomId = null;
       }
       if (reconnect) await connect(settings);
+      refreshCapabilities();
+      renderNav();
       renderEverything();
     }
   });
@@ -365,6 +422,8 @@ function onEntityChange(entity) {
     frame = null;
     if (!app.dirty) return;
     app.dirty = false;
+    if (app.view === 'editor') return;
+
     renderTopbar();
 
     const now = performance.now();
@@ -374,6 +433,7 @@ function onEntityChange(entity) {
       app.stage.render(ctx.floor, ctx);
       app.stage.select(app.roomId);
     }
+
     // La vue Énergie liste les appareils actifs : on ne la reconstruit que si
     // cette liste change réellement, pour ne pas casser un curseur en cours.
     if (app.view === 'energy') {
@@ -413,7 +473,14 @@ function greeting() {
 }
 
 function dateLabel() {
-  return new Date().toLocaleDateString('fr-FR', {
-    weekday: 'long', day: 'numeric', month: 'long'
-  });
+  return new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
 }
+
+// Démarrage en toute fin de fichier : boot() s'exécute de façon synchrone
+// jusqu'au premier await, il ne doit donc rien référencer d'encore indéfini.
+boot().catch((err) => {
+  console.error(err);
+  const node = document.getElementById('boot-error');
+  node.textContent = `Erreur de démarrage : ${err.message}`;
+  node.hidden = false;
+});
