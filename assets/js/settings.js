@@ -10,7 +10,7 @@ const DEFAULTS = {
   mode: 'demo',       // 'demo' | 'live'
   url: '',
   token: '',
-  theme: 'dark',      // 'dark' | 'light'
+  theme: 'auto',      // 'auto' (préférence système) | 'dark' | 'light'
   configOverride: null
 };
 
@@ -34,8 +34,13 @@ export function saveSettings(patch) {
   return next;
 }
 
+/** Applique un thème et renvoie celui réellement retenu ('dark' | 'light'). */
 export function applyTheme(theme) {
-  document.documentElement.dataset.theme = theme === 'light' ? 'light' : 'dark';
+  const resolved = theme === 'light' || theme === 'dark'
+    ? theme
+    : (window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+  document.documentElement.dataset.theme = resolved;
+  return resolved;
 }
 
 export function openSettings({ onApply, defaultConfigText }) {

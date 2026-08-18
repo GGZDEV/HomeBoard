@@ -49,7 +49,7 @@ boot().catch((err) => {
 
 async function boot() {
   const settings = loadSettings();
-  applyTheme(settings.theme);
+  const theme = applyTheme(settings.theme);
 
   const response = await fetch('config/home.json');
   if (!response.ok) throw new Error(`config/home.json introuvable (${response.status})`);
@@ -59,6 +59,7 @@ async function boot() {
   app.floorId = app.config.floors[0].id;
 
   buildChrome();
+  renderThemeIcon(theme);
   await connect(settings);
   renderEverything();
 
@@ -324,10 +325,15 @@ function selectRoom(roomId) {
 }
 
 function toggleTheme() {
-  const next = loadSettings().theme === 'light' ? 'dark' : 'light';
+  const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
   saveSettings({ theme: next });
   applyTheme(next);
-  document.querySelector('#theme-btn .nav-ico').innerHTML = icon(next === 'light' ? 'sun' : 'moon');
+  renderThemeIcon(next);
+}
+
+function renderThemeIcon(theme) {
+  const node = document.querySelector('#theme-btn .nav-ico');
+  if (node) node.innerHTML = icon(theme === 'light' ? 'sun' : 'moon');
 }
 
 function showSettings() {

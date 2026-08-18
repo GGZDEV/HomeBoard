@@ -94,6 +94,16 @@ pré-remplie avec l'origine courante — il ne reste que le jeton à coller.
 *(Une carte `webpage` dans un dashboard Lovelace fonctionne aussi, mais le mode
 plein écran d'un panneau rend mieux.)*
 
+### Version « un seul fichier »
+
+Pour partager le prototype ou l'ouvrir sans serveur :
+
+```bash
+node tools/build-single-file.js   # -> dist/homeboard.html
+```
+
+CSS, modules et plan de la maison sont inlinés dans un unique HTML autonome.
+
 ---
 
 ## Modéliser sa maison (10 minutes, sans modeleur 3D)
@@ -166,6 +176,7 @@ assets/js/demo.js          Serveur simulé (même interface que ha.js)
 assets/js/settings.js      Réglages, éditeur de plan, explorateur d'entités
 assets/js/store.js         État partagé et bus d'événements
 assets/js/icons.js         Jeu d'icônes SVG
+tools/build-single-file.js Fabrique dist/homeboard.html (version autonome)
 ```
 
 `ha.js` et `demo.js` exposent la même interface (`connect`, `callService`) : tout le
@@ -182,4 +193,6 @@ reste de l'application ignore lequel des deux tourne.
 - L'historique des courbes est construit pendant la session : à l'ouverture, les
   graphiques se remplissent au fil des mesures (l'API `history` de Home Assistant
   n'est pas encore interrogée).
+- Le thème suit la préférence système au premier lancement, puis le choix fait
+  dans l'application.
 - Prototype : testé sur Chromium et Firefox récents.
