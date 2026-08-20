@@ -6,9 +6,25 @@ import { summarize } from './iso.js';
 
 /** Registre des cartes montées : permet des mises à jour ciblées. */
 export class CardHost {
-  constructor() { this.cards = new Map(); }
+  constructor() {
+    this.cards = new Map();
+    this.watchers = [];
+  }
 
-  reset() { this.cards.clear(); }
+  reset() {
+    this.cards.clear();
+    this.watchers = [];
+  }
+
+  /**
+   * Enregistre un rafraîchissement de texte agrégé (compteurs, moyennes…)
+   * rejoué à chaque changement d'état. Les cartes se mettent à jour toutes
+   * seules ; ceci couvre ce qui les entoure.
+   */
+  watch(fn) {
+    this.watchers.push(fn);
+    fn();
+  }
 
   card(entityId) {
     const card = createCard(entityId);
@@ -26,6 +42,9 @@ export class CardHost {
     this.cards.get(entity.entity_id)?.forEach((c) => {
       try { c.update(entity); } catch (err) { console.error(err); }
     });
+    for (const fn of this.watchers) {
+      try { fn(); } catch (err) { console.error(err); }
+    }
   }
 }
 
@@ -44,6 +63,21 @@ function roomPanel(ctx, host) {
   const lights = ids.filter(isLight);
   const sensors = ids.filter((id) => !isLight(id));
 
+  const tempStat = info.temp != null ? stat(icon('thermometer'), `${formatNumber(info.temp)}°`, 'Température') : null;
+  const lightStat = lights.length ? stat(icon('bulb'), `${info.lightsOn}/${lights.length}`, 'Lumières allumées') : null;
+
+  if (tempStat || lightStat) {
+    host.watch(() => {
+      const live = summarize(room, store.entities);
+      if (tempStat && live.temp != null) {
+        tempStat.querySelector('.stat-value').textContent = `${formatNumber(live.temp)}°`;
+      }
+      if (lightStat) {
+        lightStat.querySelector('.stat-value').textContent = `${live.lightsOn}/${lights.length}`;
+      }
+    });
+  }
+
   return h('div', { class: 'panel-inner' }, [
     h('header', { class: 'panel-head' }, [
       h('button', {
@@ -57,10 +91,7 @@ function roomPanel(ctx, host) {
       h('span', { class: 'panel-badge', html: icon(room.icon || 'grid') })
     ]),
 
-    info.temp != null || lights.length ? h('div', { class: 'room-stats' }, [
-      info.temp != null ? stat(icon('thermometer'), `${formatNumber(info.temp)}°`, 'Température') : null,
-      lights.length ? stat(icon('bulb'), `${info.lightsOn}/${lights.length}`, 'Lumières allumées') : null
-    ]) : null,
+    tempStat || lightStat ? h('div', { class: 'room-stats' }, [tempStat, lightStat]) : null,
 
     lights.length > 1 ? h('div', { class: 'btn-row btn-row--stretch' }, [
       h('button', {
@@ -119,6 +150,31 @@ function overviewPanel(ctx, host) {
 
   const onLights = caps.lightsOn.filter((id) => store.get(id));
 
+  const heroValue = h('strong', { class: 'hero-value', text: String(onLights.length) });
+  const heroLabel = h('span', { class: 'hero-label' });
+  const heroCard = caps.hasLights ? h('article', { class: 'hero' }, [
+    h('div', { class: 'hero-ico', html: icon('bulb') }),
+    h('div', { class: 'hero-main' }, [heroValue, heroLabel]),
+    h('button', {
+      class: 'btn btn--ghost hero-action', type: 'button',
+      html: `${icon('power')}<span>Tout éteindre</span>`,
+      onclick: () => store.call('light', 'turn_off', { entity_id: ctx.caps.lights })
+    })
+  ]) : null;
+
+  if (heroCard) {
+    host.watch(() => {
+      const live = ctx.caps;
+      const n = live.lightsOn.length;
+      heroValue.textContent = String(n);
+      heroLabel.textContent = n
+        ? `lumière${n > 1 ? 's' : ''} allumée${n > 1 ? 's' : ''} sur ${live.lights.length}`
+        : 'tout est éteint';
+      heroCard.classList.toggle('is-on', n > 0);
+      heroCard.querySelector('.hero-action').hidden = n === 0;
+    });
+  }
+
   return h('div', { class: 'panel-inner' }, [
     h('header', { class: 'panel-head' }, [
       h('div', {}, [
@@ -127,25 +183,9 @@ function overviewPanel(ctx, host) {
       ])
     ]),
 
-    caps.hasLights ? h('article', { class: `hero ${onLights.length ? 'is-on' : ''}` }, [
-      h('div', { class: 'hero-ico', html: icon('bulb') }),
-      h('div', { class: 'hero-main' }, [
-        h('strong', { class: 'hero-value', text: String(onLights.length) }),
-        h('span', {
-          class: 'hero-label',
-          text: onLights.length
-            ? `lumière${onLights.length > 1 ? 's' : ''} allumée${onLights.length > 1 ? 's' : ''} sur ${caps.lights.length}`
-            : 'tout est éteint'
-        })
-      ]),
-      onLights.length ? h('button', {
-        class: 'btn btn--ghost hero-action', type: 'button',
-        html: `${icon('power')}<span>Tout éteindre</span>`,
-        onclick: () => store.call('light', 'turn_off', { entity_id: caps.lights })
-      }) : null
-    ]) : null,
+    heroCard,
 
-    caps.hasTemperature ? temperatureCard(ctx) : null,
+    caps.hasTemperature ? temperatureCard(ctx, host) : null,
 
     onLights.length
       ? section('Allumées maintenant', h('div', { class: 'card-stack' }, onLights.map((id) => host.card(id))))
@@ -153,7 +193,7 @@ function overviewPanel(ctx, host) {
   ]);
 }
 
-function temperatureCard(ctx) {
+function temperatureCard(ctx, host) {
   const caps = ctx.caps;
   const outdoor = store.get(caps.outdoor);
 
@@ -163,7 +203,7 @@ function temperatureCard(ctx) {
     .sort((a, b) => b.info.temp - a.info.temp)
     .slice(0, 8);
 
-  return h('article', { class: 'card card--temps' }, [
+  const card = h('article', { class: 'card card--temps' }, [
     h('div', { class: 'card-head' }, [
       h('span', { class: 'card-ico', html: icon('thermometer') }),
       h('div', { class: 'card-title' }, [
@@ -177,6 +217,7 @@ function temperatureCard(ctx) {
     ]),
     rows.length ? h('div', { class: 'card-body' }, [
       h('ul', { class: 'temp-rows' }, rows.map(({ room, info }) => h('li', {
+        dataset: { room: room.id },
         class: 'temp-row', role: 'button', tabindex: '0',
         onclick: () => ctx.selectRoom(room.id),
         onkeydown: (ev) => {
@@ -193,6 +234,28 @@ function temperatureCard(ctx) {
       ])))
     ]) : null
   ]);
+
+  if (rows.length) {
+    host.watch(() => {
+      const outdoorLive = store.get(ctx.caps.outdoor);
+      if (outdoorLive) {
+        card.querySelector('.pill').textContent = `${formatNumber(outdoorLive.state)}° dehors`;
+      }
+      if (ctx.caps.indoorAverage != null) {
+        card.querySelector('.card-sub').textContent = `${formatNumber(ctx.caps.indoorAverage)}° en moyenne`;
+      }
+      for (const row of card.querySelectorAll('.temp-row')) {
+        const target = rows.find(({ room }) => room.id === row.dataset.room);
+        if (!target) continue;
+        const live = summarize(target.room, store.entities);
+        if (live.temp == null) continue;
+        row.querySelector('.temp-value').textContent = `${formatNumber(live.temp)}°`;
+        row.querySelector('.temp-fill').style.setProperty('--fill', tempRatio(live.temp));
+      }
+    });
+  }
+
+  return card;
 }
 
 /** Position d'une température sur une échelle confort 15–27 °C. */

@@ -27,7 +27,10 @@ const app = {
   editor: null,
   host: new CardHost(),
   homeNode: null,
-  dirty: false
+  dirty: false,
+  panelSignature: '',
+  panelDirty: false,
+  interacting: false
 };
 
 const ctx = {
@@ -66,6 +69,19 @@ async function boot() {
   bus.on('status', renderStatus);
   bus.on('toast', showToast);
   window.addEventListener('homeboard-toast', (ev) => showToast({ text: ev.detail.text }));
+
+  // Un rendu du panneau pendant qu'on manipule un curseur remplacerait
+  // l'élément sous le doigt : on attend la fin du geste.
+  const panel = document.getElementById('panel');
+  panel.addEventListener('pointerdown', () => { app.interacting = true; });
+  window.addEventListener('pointerup', () => {
+    if (!app.interacting) return;
+    app.interacting = false;
+    if (app.panelDirty) {
+      app.panelDirty = false;
+      renderPanelNow();
+    }
+  });
 
   window.addEventListener('keydown', (ev) => {
     if (ev.key === 'Escape' && app.roomId) selectRoom(null);
@@ -211,7 +227,21 @@ function renderPanelNow() {
     return;
   }
   renderPanel(panel, ctx, app.host);
+  app.panelSignature = panelSignature();
   document.getElementById('app').classList.toggle('has-room', Boolean(app.roomId));
+}
+
+/**
+ * Ce que le panneau affiche *structurellement*. Les valeurs vivantes sont
+ * rafraîchies en place ; seul un changement de cette signature — une lampe
+ * qui s'allume ailleurs, par exemple — impose de reconstruire la liste.
+ */
+function panelSignature() {
+  if (app.roomId) {
+    const room = ctx.floor.rooms.find((r) => r.id === app.roomId);
+    return `${app.roomId}:${(room?.entities || []).filter((id) => store.get(id)).join(',')}`;
+  }
+  return `overview:${[...(app.caps?.lightsOn || [])].sort().join(',')}`;
 }
 
 function renderFloors() {
@@ -367,6 +397,11 @@ function onEntityChange(entity) {
 
     refreshCapabilities();
     renderTopbar();
+
+    if (panelSignature() !== app.panelSignature) {
+      if (app.interacting) app.panelDirty = true;
+      else renderPanelNow();
+    }
 
     const now = performance.now();
     if (app.view === 'home' && now - lastStageRender > 350) {

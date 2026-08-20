@@ -83,8 +83,16 @@ const bundle = [
 
 const styles = CSS.map((name) => read('assets', 'css', `${name}.css`)).join('\n');
 
+// Le fichier autonome ne peut pas référencer les ressources voisines.
+// Le favicon est réinjecté en data URI : un fichier autonome ne peut pas
+// pointer vers ses voisins, et sans lui le navigateur réclame /favicon.ico.
+const favicon = `<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,${
+  encodeURIComponent(read('assets', 'icon.svg').replace(/\n\s*/g, ' ')).replace(/'/g, '%27')}">`;
+
 const html = read('index.html')
   .replace(/^\s*<link rel="stylesheet" href="assets\/css\/[a-z]+\.css">\n/gm, '')
+  .replace(/^\s*<link rel="(?:manifest|apple-touch-icon)"[^>]*>\n/gm, '')
+  .replace(/^(\s*)<link rel="icon"[^>]*>$/gm, `$1${favicon}`)
   .replace('</head>', `  <style>\n${styles}\n  </style>\n</head>`)
   .replace(
     '<script type="module" src="assets/js/app.js"></script>',

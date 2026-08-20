@@ -93,6 +93,7 @@
   background:
     radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 60%),
     var(--surface);
+  -webkit-backdrop-filter: blur(22px);
   backdrop-filter: blur(22px);
   box-shadow: var(--shadow-lg);
   overflow: hidden;
@@ -175,6 +176,7 @@
   padding: 8px 14px calc(88px + env(safe-area-inset-bottom));
   border-radius: 24px 24px 0 0;
   background: color-mix(in srgb, var(--surface-solid) 94%, transparent);
+  -webkit-backdrop-filter: blur(26px);
   backdrop-filter: blur(26px);
   border-top: 1px solid var(--border-strong);
   box-shadow: 0 -24px 60px -30px rgba(0, 0, 0, 0.7);
@@ -231,6 +233,7 @@
   padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
   border-top: 1px solid var(--border);
   background: color-mix(in srgb, var(--bg-2) 88%, transparent);
+  -webkit-backdrop-filter: blur(24px);
   backdrop-filter: blur(24px);
 }
 
@@ -324,6 +327,7 @@
     border: none;
     border-radius: 0;
     background: none;
+    -webkit-backdrop-filter: none;
     backdrop-filter: none;
     box-shadow: none;
     animation: none;
