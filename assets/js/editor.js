@@ -73,10 +73,11 @@ export class PlanEditor {
   // --- Structure ---------------------------------------------------------
 
   build() {
-    this.floorBar = h('div', { class: 'ed-floors' });
-    this.toolBar = h('div', { class: 'ed-tools' });
+    this.topBar = h('header', { class: 'ed-top' });
+    this.dock = h('div', { class: 'ed-dock' });
     this.inspector = h('aside', { class: 'ed-inspector' });
-    this.canvasWrap = h('div', { class: 'ed-canvas' });
+    this.hint = h('div', { class: 'ed-canvas-hint', hidden: true });
+    this.canvasWrap = h('div', { class: 'ed-canvas', dataset: { tool: 'select' } });
 
     this.svg = svgEl('svg', { class: 'ed-svg' });
     this.world = svgEl('g', { class: 'ed-world' });
@@ -85,50 +86,33 @@ export class PlanEditor {
     this.handleLayer = svgEl('g', { class: 'ed-handles' });
     this.world.append(this.gridLayer, this.roomLayer, this.handleLayer);
     this.svg.append(this.world);
-    this.canvasWrap.append(this.svg);
+    this.canvasWrap.append(this.svg, this.hint, this.dock);
 
-    this.buildTools();
+    this.buildDock();
     this.buildGrid();
 
     this.container.replaceChildren(
-      h('div', { class: 'ed' }, [
-        h('header', { class: 'ed-head' }, [this.floorBar, this.toolBar]),
-        h('div', { class: 'ed-body' }, [this.canvasWrap, this.inspector])
-      ])
+      h('div', { class: 'ed' }, [this.topBar, this.canvasWrap, this.inspector])
     );
 
     this.bindPointer();
   }
 
-  buildTools() {
-    const tool = (name, iconName, label) => h('button', {
-      class: `ed-tool ${this.tool === name ? 'is-active' : ''}`, type: 'button',
-      dataset: { tool: name }, title: label, 'aria-label': label,
-      onclick: () => this.setTool(name)
-    }, [h('span', { class: 'ed-tool-ico', html: icon(iconName) }), h('span', { class: 'ed-tool-label', text: label })]);
-
-    this.toolBar.replaceChildren(
+  /** Actions toujours disponibles, à portée de pouce sur le plan. */
+  buildDock() {
+    this.dock.replaceChildren(
       h('button', {
-        class: 'btn btn--sm', type: 'button', html: `${icon('plus')}<span>Pièce</span>`,
+        class: 'btn btn--sm ed-dock-add', type: 'button',
+        html: `${icon('plus')}<span>Pièce</span>`,
         onclick: () => this.addRoom()
       }),
-      h('div', { class: 'ed-tool-group' }, [
-        tool('select', 'move', 'Déplacer'),
-        tool('paint', 'brush', 'Agrandir'),
-        tool('erase', 'eraser', 'Rogner')
-      ]),
-      h('div', { class: 'ed-tool-spacer' }),
       h('button', {
-        class: 'ibtn', type: 'button', title: 'Annuler la dernière action', 'aria-label': 'Annuler',
-        html: icon('undo'), onclick: () => this.undo()
+        class: 'ibtn', type: 'button', title: 'Annuler la dernière action',
+        'aria-label': 'Annuler', html: icon('undo'), onclick: () => this.undo()
       }),
       h('button', {
-        class: 'ibtn', type: 'button', title: 'Recentrer', 'aria-label': 'Recentrer',
-        html: icon('refresh'), onclick: () => this.fitCamera()
-      }),
-      h('button', {
-        class: 'btn btn--sm', type: 'button', html: `${icon('check')}<span>Terminer</span>`,
-        onclick: () => this.onDone()
+        class: 'ibtn', type: 'button', title: 'Recentrer le plan',
+        'aria-label': 'Recentrer', html: icon('maximize'), onclick: () => this.fitCamera()
       })
     );
   }
@@ -160,32 +144,51 @@ export class PlanEditor {
         this.renderInspector();
         this.fitCamera();
       }
-    }, [
-      h('span', { text: floor.name }),
-      h('span', { class: 'ed-floor-count', text: String(floor.rooms.length) })
-    ]));
+    }, [h('span', { text: floor.name })]));
 
-    this.floorBar.replaceChildren(
+    this.topBar.replaceChildren(
       h('div', { class: 'ed-floor-tabs' }, tabs),
-      h('div', { class: 'ed-floor-actions' }, [
-        h('button', {
-          class: 'ibtn ibtn--sm', type: 'button', title: 'Renommer l’étage', 'aria-label': 'Renommer l’étage',
-          html: icon('pencil'), onclick: () => this.renameFloor()
-        }),
-        h('button', {
-          class: 'ibtn ibtn--sm', type: 'button', title: 'Dupliquer l’étage', 'aria-label': 'Dupliquer l’étage',
-          html: icon('copy'), onclick: () => this.duplicateFloor()
-        }),
-        h('button', {
-          class: 'ibtn ibtn--sm', type: 'button', title: 'Supprimer l’étage', 'aria-label': 'Supprimer l’étage',
-          html: icon('trash'), onclick: () => this.deleteFloor()
-        }),
-        h('button', {
-          class: 'ibtn ibtn--sm', type: 'button', title: 'Ajouter un étage', 'aria-label': 'Ajouter un étage',
-          html: icon('plus'), onclick: () => this.addFloor()
-        })
-      ])
+      h('button', {
+        class: 'ibtn ed-menu-btn', type: 'button', title: 'Plus d’actions',
+        'aria-label': 'Plus d’actions', html: icon('settings'),
+        onclick: (ev) => this.openMenu(ev.currentTarget)
+      }),
+      h('button', {
+        class: 'btn btn--sm ed-done', type: 'button',
+        html: `${icon('check')}<span>Terminer</span>`,
+        'aria-label': 'Terminer', onclick: () => this.onDone()
+      })
     );
+  }
+
+  /** Actions rares : gestion des étages et rattachement automatique. */
+  openMenu(anchor) {
+    const items = [
+      ['pencil', 'Renommer l’étage', () => this.renameFloor()],
+      ['copy', 'Dupliquer l’étage', () => this.duplicateFloor()],
+      ['plus', 'Ajouter un étage', () => this.addFloor()],
+      ['trash', 'Supprimer l’étage', () => this.deleteFloor()],
+      ['device', 'Rattacher les appareils', () => this.autoAssign()]
+    ];
+
+    const close = () => {
+      menu.remove();
+      document.removeEventListener('pointerdown', onOutside, true);
+      document.removeEventListener('keydown', onKey);
+    };
+    const onOutside = (ev) => { if (!menu.contains(ev.target) && ev.target !== anchor) close(); };
+    const onKey = (ev) => { if (ev.key === 'Escape') close(); };
+
+    const menu = h('div', { class: 'ed-menu', role: 'menu' }, items.map(([ico, label, run]) => h('button', {
+      class: `ed-menu-item ${label.startsWith('Supprimer') ? 'is-danger' : ''}`,
+      type: 'button', role: 'menuitem',
+      html: `${icon(ico)}<span>${label}</span>`,
+      onclick: () => { close(); run(); }
+    })));
+
+    this.canvasWrap.append(menu);
+    document.addEventListener('pointerdown', onOutside, true);
+    document.addEventListener('keydown', onKey);
   }
 
   addFloor() {
@@ -400,15 +403,17 @@ export class PlanEditor {
     }
 
     const b = boundsOfCells(cells);
-    const pad = 48;
+    const pad = 40;
+    const dock = 88; // hauteur réservée à la barre d'actions flottante
+    const usableH = rect.height - pad - dock;
     const scale = clamp(
-      Math.min((rect.width - pad * 2) / (b.w * CELL), (rect.height - pad * 2) / (b.h * CELL)),
+      Math.min((rect.width - pad * 2) / (b.w * CELL), usableH / (b.h * CELL)),
       MIN_SCALE, 1.6
     );
     this.camera = {
       s: scale,
       x: rect.width / 2 - (b.minX + b.w / 2) * CELL * scale,
-      y: rect.height / 2 - (b.minY + b.h / 2) * CELL * scale
+      y: (pad + usableH / 2) - (b.minY + b.h / 2) * CELL * scale
     };
     this.applyCamera();
   }
@@ -419,14 +424,21 @@ export class PlanEditor {
     return this.cellAt(rect.left + rect.width / 2, rect.top + rect.height / 2);
   }
 
-  /** Fait glisser la caméra pour qu'un ensemble de cases soit entièrement visible. */
+  /**
+   * Fait glisser la caméra pour qu'un ensemble de cases reste entièrement
+   * visible. Sur mobile, l'inspecteur remonte par-dessus le plan : la hauteur
+   * qu'il occupe est retirée de la zone utile.
+   */
   ensureVisible(cells) {
     const rect = this.svg.getBoundingClientRect();
     if (!rect.width || !cells.size) return;
 
+    const inset = this.inspectorInset();
     const b = boundsOfCells(cells);
     const step = CELL * this.camera.s;
-    const margin = 56;
+    const margin = 40;
+    const usableBottom = rect.height - inset - margin;
+
     const left = this.camera.x + b.minX * step;
     const top = this.camera.y + b.minY * step;
     const right = this.camera.x + b.maxX * step;
@@ -437,13 +449,23 @@ export class PlanEditor {
     if (left < margin) dx = margin - left;
     else if (right > rect.width - margin) dx = Math.max(rect.width - margin - right, margin - left);
     if (top < margin) dy = margin - top;
-    else if (bottom > rect.height - margin) dy = Math.max(rect.height - margin - bottom, margin - top);
+    else if (bottom > usableBottom) dy = Math.max(usableBottom - bottom, margin - top);
 
     if (dx || dy) {
       this.camera.x += dx;
       this.camera.y += dy;
       this.applyCamera();
     }
+  }
+
+  /** Hauteur masquée par l'inspecteur quand il se superpose au plan. */
+  inspectorInset() {
+    if (!this.inspector.isConnected) return 0;
+    const style = getComputedStyle(this.inspector);
+    if (style.position !== 'fixed' || style.display === 'none') return 0;
+    const sheet = this.inspector.getBoundingClientRect();
+    const canvas = this.canvasWrap.getBoundingClientRect();
+    return Math.max(0, canvas.bottom - sheet.top);
   }
 
   cellAt(clientX, clientY) {
@@ -457,12 +479,11 @@ export class PlanEditor {
 
   setTool(tool) {
     this.tool = tool;
-    for (const btn of this.toolBar.querySelectorAll('.ed-tool')) {
+    for (const btn of this.container.querySelectorAll('.ed-tool')) {
       btn.classList.toggle('is-active', btn.dataset.tool === tool);
     }
     this.canvasWrap.dataset.tool = tool;
     this.renderHandles();
-    this.renderInspector();
   }
 
   bindPointer() {
@@ -523,6 +544,12 @@ export class PlanEditor {
     }
 
     if (this.tool !== 'select' && this.room) {
+      // Sinon on peindrait la pièce sélectionnée en croyant en choisir une autre.
+      if (roomNode && roomNode.dataset.room !== this.roomId) {
+        this.select(roomNode.dataset.room);
+        this.gesture = null;
+        return;
+      }
       this.snapshot();
       this.gesture = {
         type: this.tool, roomId: this.roomId,
@@ -676,6 +703,10 @@ export class PlanEditor {
     }
     this.renderHandles();
     this.renderInspector();
+
+    // La feuille vient de s'ouvrir : on dégage la pièce de dessous.
+    const room = this.room;
+    if (room) requestAnimationFrame(() => this.ensureVisible(roomCells(room)));
   }
 
   // --- Inspecteur --------------------------------------------------------
@@ -688,21 +719,11 @@ export class PlanEditor {
       this.inspector.replaceChildren(h('div', { class: 'ed-inspector-inner' }, [
         h('div', { class: 'ed-empty' }, [
           h('span', { class: 'ed-empty-ico', html: icon('floorplan') }),
-          h('h3', { text: 'Dessinez votre maison' }),
+          h('h3', { text: 'Aucune pièce sélectionnée' }),
           h('p', {
-            text: 'Ajoutez une pièce, glissez-la sur la grille, tirez ses poignées pour '
-              + 'l’ajuster. « Agrandir » et « Rogner » permettent les formes en L ou en U. '
-              + 'Placez ensuite vos lumières et vos capteurs de température.'
-          }),
-          h('button', {
-            class: 'btn', type: 'button', html: `${icon('plus')}<span>Ajouter une pièce</span>`,
-            onclick: () => this.addRoom()
-          }),
-          Object.keys(this.entities).length ? h('button', {
-            class: 'btn btn--ghost', type: 'button',
-            html: `${icon('device')}<span>Rattacher les appareils automatiquement</span>`,
-            onclick: () => this.autoAssign()
-          }) : null
+            text: 'Touchez une pièce pour la modifier, ou ajoutez-en une avec le '
+              + 'bouton « Pièce » en bas du plan.'
+          })
         ])
       ]));
       return;
@@ -754,6 +775,15 @@ export class PlanEditor {
       ]);
     });
 
+    const tool = (name, iconName, label) => h('button', {
+      class: `ed-tool ${this.tool === name ? 'is-active' : ''}`, type: 'button',
+      dataset: { tool: name }, title: label, 'aria-label': label,
+      onclick: () => this.setTool(name)
+    }, [
+      h('span', { class: 'ed-tool-ico', html: icon(iconName) }),
+      h('span', { class: 'ed-tool-label', text: label })
+    ]);
+
     this.inspector.replaceChildren(h('div', { class: 'ed-inspector-inner' }, [
       h('header', { class: 'ed-inspector-head' }, [
         h('h3', { text: 'Pièce' }),
@@ -763,11 +793,18 @@ export class PlanEditor {
         })
       ]),
       nameInput,
+      // Ces trois outils n'agissent que sur la pièce sélectionnée : leur place
+      // est ici, pas dans une barre d'outils globale.
+      h('div', { class: 'ed-tool-group' }, [
+        tool('select', 'move', 'Déplacer'),
+        tool('paint', 'brush', 'Agrandir'),
+        tool('erase', 'eraser', 'Rogner')
+      ]),
       h('p', {
         class: 'ed-hint',
         text: isSingleRect(room)
           ? `${b.w} × ${b.h} cases — tirez les poignées pour redimensionner`
-          : `${cells.size} cases (forme libre) — utilisez « Agrandir » et « Rogner »`
+          : `${cells.size} cases (forme libre) — « Agrandir » et « Rogner » ajustent le contour`
       }),
       icons,
       h('section', { class: 'ed-section' }, [

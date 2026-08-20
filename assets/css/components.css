@@ -433,24 +433,25 @@
 .empty-state p { font-size: 13.5px; color: var(--muted); line-height: 1.55; }
 
 /* ---------------------------------------------------------------------
-   Éditeur de plan
+   Éditeur de plan — le canevas d'abord, les commandes au pouce
    --------------------------------------------------------------------- */
 
 .ed {
   flex: 1;
   min-width: 0;
   min-height: 0;
+  height: 100%;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   gap: 10px;
 }
 
-.ed-head { display: flex; flex-direction: column; gap: 8px; }
-.ed-floors { display: flex; align-items: center; gap: 8px; }
+.ed-top { display: flex; align-items: center; gap: 8px; }
 
 .ed-floor-tabs {
   display: flex;
   gap: 4px;
+  flex: 1;
   min-width: 0;
   overflow-x: auto;
   scrollbar-width: none;
@@ -464,11 +465,10 @@
 .ed-floor {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 8px 13px;
+  padding: 8px 15px;
   min-height: 42px;
   border-radius: 11px;
-  font-size: 13px;
+  font-size: 13.5px;
   white-space: nowrap;
   color: var(--muted);
 }
@@ -477,50 +477,9 @@
   background: color-mix(in srgb, var(--accent) 16%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
 }
-.ed-floor-count {
-  min-width: 20px;
-  padding: 1px 6px;
-  border-radius: 999px;
-  font-size: 10.5px;
-  background: var(--surface-2);
-}
-.ed-floor-actions { display: flex; gap: 4px; margin-left: auto; }
+.ed-menu-btn, .ed-done { flex: none; }
 
-.ed-tools {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  padding-bottom: 2px;
-}
-.ed-tools::-webkit-scrollbar { display: none; }
-.ed-tool-spacer { flex: 1; min-width: 4px; }
-
-.ed-tool-group {
-  display: flex;
-  gap: 2px;
-  padding: 3px;
-  border-radius: 14px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-}
-.ed-tool {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 8px 13px;
-  min-height: 42px;
-  border-radius: 11px;
-  font-size: 13px;
-  white-space: nowrap;
-  color: var(--muted);
-  transition: background 0.16s, color 0.16s;
-}
-.ed-tool.is-active { color: var(--text); background: color-mix(in srgb, var(--accent) 18%, transparent); }
-.ed-tool-ico { font-size: 17px; }
-
-.ed-body { display: grid; grid-template-rows: minmax(0, 1fr); min-height: 0; gap: 12px; }
+/* --- Canevas ------------------------------------------------------------ */
 
 .ed-canvas {
   position: relative;
@@ -534,6 +493,78 @@
 .ed-svg { width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
 .ed-canvas[data-tool='paint'] .ed-svg,
 .ed-canvas[data-tool='erase'] .ed-svg { cursor: crosshair; }
+
+/* Barre d'actions flottante : elle ne prend pas de hauteur au canevas. */
+.ed-dock {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--surface-solid) 88%, transparent);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-md);
+}
+.ed-dock .ibtn { background: none; border-color: transparent; }
+.ed-dock .ibtn:hover { background: var(--surface-2); }
+
+.ed-canvas-hint {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+  pointer-events: none;
+}
+.ed-canvas-hint[hidden] { display: none; }
+.ed-canvas-hint-ico { font-size: 34px; color: var(--accent); }
+.ed-canvas-hint h3 { font-size: 17px; font-weight: 600; }
+.ed-canvas-hint p { font-size: 13px; color: var(--muted); max-width: 30ch; line-height: 1.5; }
+.ed-canvas-hint .btn { pointer-events: auto; margin-top: 6px; }
+
+/* --- Menu d'actions ----------------------------------------------------- */
+
+.ed-menu {
+  position: absolute;
+  z-index: 5;
+  top: 10px; right: 10px;
+  min-width: 232px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  border-radius: 16px;
+  background: var(--surface-solid);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-lg);
+  animation: toast-in 0.16s ease;
+}
+.ed-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  min-height: 44px;
+  border-radius: 11px;
+  font-size: 13.5px;
+  color: var(--text);
+  text-align: left;
+}
+.ed-menu-item:hover { background: var(--surface-2); }
+.ed-menu-item .icon { font-size: 17px; color: var(--muted); }
+.ed-menu-item.is-danger { color: var(--alert); }
+.ed-menu-item.is-danger .icon { color: var(--alert); }
+
+/* --- Pièces sur le canevas ---------------------------------------------- */
 
 .ed-room { cursor: grab; }
 .ed-room-fill { fill: hsl(var(--room-hue) 68% 55% / 0.22); transition: fill 0.15s; }
@@ -560,6 +591,8 @@
 
 .ed-handle { fill: var(--surface-solid); stroke: var(--accent); stroke-width: 2; cursor: pointer; }
 
+/* --- Inspecteur de pièce ------------------------------------------------ */
+
 .ed-inspector { display: none; }
 .ed-inspector-inner { display: flex; flex-direction: column; gap: 12px; }
 .ed-inspector-head { display: flex; align-items: center; justify-content: space-between; }
@@ -571,7 +604,7 @@
   z-index: 40;
   inset-inline: 0;
   bottom: 0;
-  max-height: 58dvh;
+  max-height: 56dvh;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 14px 14px calc(88px + env(safe-area-inset-bottom));
@@ -584,14 +617,44 @@
   animation: sheet-up 0.24s cubic-bezier(0.2, 0.9, 0.25, 1);
 }
 
+.ed-tool-group {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.ed-tool {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 10px;
+  min-height: 46px;
+  border-radius: 11px;
+  font-size: 13px;
+  white-space: nowrap;
+  color: var(--muted);
+  transition: background 0.16s, color 0.16s;
+}
+.ed-tool.is-active {
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 38%, transparent);
+}
+.ed-tool-ico { font-size: 17px; }
+
 .ed-hint { font-size: 12.5px; color: var(--muted); line-height: 1.5; }
 
 .ed-icons { display: flex; flex-wrap: wrap; gap: 6px; }
 .ed-icon {
   display: grid;
   place-items: center;
-  width: 44px; height: 44px;
-  border-radius: 12px;
+  width: 46px; height: 46px;
+  border-radius: 13px;
   font-size: 19px;
   color: var(--muted);
   background: var(--surface);
@@ -612,7 +675,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 9px 10px;
+  padding: 10px;
   border-radius: 12px;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -630,10 +693,15 @@
   white-space: nowrap;
 }
 
-.ed-empty { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
-.ed-empty-ico { font-size: 30px; color: var(--accent); }
-.ed-empty h3 { font-size: 17px; font-weight: 600; }
+.ed-empty { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.ed-empty-ico { font-size: 28px; color: var(--accent); }
+.ed-empty h3 { font-size: 16px; font-weight: 600; }
 .ed-empty p { font-size: 13px; color: var(--muted); line-height: 1.55; }
+
+@media (max-width: 420px) {
+  .ed-done span { display: none; }
+  .ed-done { width: 46px; padding: 0; justify-content: center; }
+}
 
 /* --- Modale ------------------------------------------------------------ */
 
@@ -788,9 +856,16 @@
 }
 
 @media (min-width: 900px) {
-  .ed-head { flex-direction: row; align-items: center; gap: 14px; }
-  .ed-floors { flex: none; }
-  .ed-body { grid-template-columns: minmax(0, 1fr) 340px; grid-template-rows: minmax(0, 1fr); }
+  /* Le canevas et l'inspecteur cohabitent ; la barre d'étages coiffe les deux. */
+  .ed {
+    grid-template-columns: minmax(0, 1fr) 340px;
+    grid-template-rows: auto minmax(0, 1fr);
+    column-gap: 12px;
+  }
+  .ed-top { grid-column: 1 / -1; }
+  .ed-canvas { grid-column: 1; }
+  .ed-inspector { grid-column: 2; }
+  .ed-floor-tabs { flex: none; max-width: 60%; }
 
   .ed-inspector,
   .ed.has-selection .ed-inspector {

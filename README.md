@@ -81,11 +81,14 @@ Pour une tablette murale, ce panneau en plein écran est le mode le plus confort
 
 ## Dessiner sa maison
 
-Onglet **Éditeur**. Aucune connaissance technique requise.
+Onglet **Éditeur**. Le plan occupe tout l'écran ; les commandes viennent à lui.
+
+En haut : le sélecteur d'étage, un bouton **⚙** pour les actions rares, et
+**Terminer**. Flottant en bas du plan : **+ Pièce**, **annuler**, **recentrer**.
 
 | Geste | Effet |
 |---|---|
-| **+ Pièce** | Pose une pièce de 4 × 3 là où vous regardez. |
+| **+ Pièce** | Pose une pièce de 4 × 3 au centre de la vue. |
 | Glisser une pièce | La déplace. Elle vire au rouge et le geste est refusé si elle chevauche une voisine. |
 | Tirer une poignée | Redimensionne (pièces rectangulaires). |
 | **Agrandir** puis glisser | Ajoute des cases : c'est ainsi qu'on obtient un L, un T ou un U. |
@@ -93,13 +96,16 @@ Onglet **Éditeur**. Aucune connaissance technique requise.
 | Pincer / molette | Zoom. Glisser le fond déplace la vue. |
 | **↺** | Annule la dernière action (40 niveaux). |
 
-À droite — en bas sur téléphone — le nom de la pièce, son icône et ses appareils.
-**Ajouter** ouvre la liste des lumières et capteurs de température pas encore placés ;
-**Rattacher les appareils automatiquement** fait le gros du travail en associant
-`light.cuisine_plan_de_travail` à la pièce « Cuisine ».
+Toucher une pièce ouvre son panneau : nom, outils de forme, icône et appareils.
+Sur téléphone c'est une feuille remontante, et **le plan se recale au-dessus
+d'elle** pour que la pièce en cours d'édition reste visible ; sur grand écran,
+c'est une colonne à droite.
 
-Les étages se gèrent dans la barre du haut : ajouter, renommer, **dupliquer** (utile,
-l'étage a souvent la même empreinte que le rez-de-chaussée), supprimer.
+**Ajouter** liste les lumières et capteurs de température pas encore placés.
+Le menu **⚙** contient la gestion des étages — renommer, **dupliquer** (utile,
+l'étage a souvent la même empreinte que le rez-de-chaussée), ajouter, supprimer —
+et **Rattacher les appareils**, qui associe d'un coup `light.cuisine_plan_de_travail`
+à la pièce « Cuisine ».
 
 Tout est enregistré au fur et à mesure dans le navigateur. **Réglages → Sauvegarde**
 permet de copier le plan pour le transférer sur un autre appareil.

@@ -59,13 +59,19 @@
   padding-bottom: 2px;
 }
 .stat-chips::-webkit-scrollbar { display: none; }
-/* En édition, l'écran doit d'abord servir au plan. */
-.app.is-editing .stat-chips,
-.app.is-editing .brand-sub { display: none; }
+/* En édition, l'écran entier sert au plan : la barre haute de l'application
+   disparaît, l'éditeur a sa propre barre avec « Terminer ». */
+.app.is-editing .topbar { display: none; }
+.app.is-editing .workspace { overflow: hidden; padding-top: 12px; }
+.app.is-editing .view-root { flex: 1; min-height: 0; }
 
 /* --- Espace de travail -------------------------------------------------- */
 
 .workspace {
+  /* Placement explicite : quand la barre haute est masquée (mode édition),
+     le placement automatique mettrait l'espace de travail dans la rangée
+     « auto » et il se réduirait à son contenu. */
+  grid-row: 2;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior-y: contain;
@@ -334,10 +340,8 @@
   }
   .app.has-room .panel::before { display: none; }
 
-  .app.is-editing .workspace { grid-template-columns: minmax(0, 1fr); }
-  .app.is-editing .stat-chips,
-  .app.is-editing .brand-sub { display: flex; }
-  .app.is-editing .brand-sub { display: block; }
+  .app.is-editing .topbar { display: grid; }
+  .app.is-editing .workspace { grid-template-columns: minmax(0, 1fr); padding-top: 0; }
   .tile-grid { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); }
 }
 
