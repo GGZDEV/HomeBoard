@@ -7,7 +7,7 @@
  * de sauvegarde — il n'est jamais nécessaire de l'ouvrir.
  */
 import { icon, hasIcon } from './icons.js';
-import { h, friendlyName, stateLabel } from './cards.js';
+import { h, friendlyName, stateLabel, isLight } from './cards.js';
 import { autoAssignEntities, unassignedEntities, slugify } from './capabilities.js';
 import {
   key, parseKey, roomCells, setRoomCells, boundsOfCells, borderEdges, anchorCell,
@@ -690,8 +690,9 @@ export class PlanEditor {
           h('span', { class: 'ed-empty-ico', html: icon('floorplan') }),
           h('h3', { text: 'Dessinez votre maison' }),
           h('p', {
-            text: 'Ajoutez une pièce, glissez-la sur la grille, tirez ses poignées '
-              + 'pour l’ajuster. « Agrandir » et « Rogner » permettent les formes en L ou en U.'
+            text: 'Ajoutez une pièce, glissez-la sur la grille, tirez ses poignées pour '
+              + 'l’ajuster. « Agrandir » et « Rogner » permettent les formes en L ou en U. '
+              + 'Placez ensuite vos lumières et vos capteurs de température.'
           }),
           h('button', {
             class: 'btn', type: 'button', html: `${icon('plus')}<span>Ajouter une pièce</span>`,
@@ -733,7 +734,10 @@ export class PlanEditor {
     const entityRows = (room.entities || []).map((id) => {
       const entity = this.entities[id];
       return h('li', { class: `ed-entity ${entity ? '' : 'is-missing'}` }, [
-        h('span', { class: 'ed-entity-ico', html: icon(entity ? 'device' : 'alert') }),
+        h('span', {
+          class: 'ed-entity-ico',
+          html: icon(entity ? (isLight(id) ? 'bulb' : 'thermometer') : 'alert')
+        }),
         h('div', { class: 'ed-entity-body' }, [
           h('strong', { text: entity ? friendlyName(id, entity) : id }),
           h('span', { text: entity ? `${id} · ${stateLabel(entity)}` : 'entité absente de Home Assistant' })
@@ -798,7 +802,7 @@ export class PlanEditor {
   pickEntity(room) {
     const available = unassignedEntities(this.config, this.entities);
     if (!available.length) {
-      this.toast('Tous les appareils détectés sont déjà placés.');
+      this.toast('Toutes les lumières et températures détectées sont déjà placées.');
       return;
     }
     openEntityPicker({
@@ -816,7 +820,7 @@ export class PlanEditor {
     const { assigned } = autoAssignEntities(this.config, this.entities);
     if (!assigned) {
       this.history.pop();
-      this.toast('Aucun appareil ne correspond au nom d’une pièce.');
+      this.toast('Aucune lumière ni température ne correspond au nom d’une pièce.');
       return;
     }
     this.commit();

@@ -39,7 +39,7 @@ export function normalizeRects(room) {
  * (balayage glouton : on part de la case la plus haute à gauche, on étend
  * en largeur puis en hauteur tant que les lignes sont pleines).
  */
-export function rectsFromCells(cells) {
+function rectsFromCells(cells) {
   const remaining = new Set(cells);
   const rects = [];
 
@@ -200,7 +200,7 @@ export function collides(cells, taken) {
  * On balaie vers la droite puis vers le bas du plan existant : la pièce
  * apparaît à côté de la maison, jamais dans les coordonnées négatives.
  */
-export function findFreeSpot(floor, w, h) {
+function findFreeSpot(floor, w, h) {
   const taken = occupiedCells(floor, null);
   if (!taken.size) return [0, 0];
 

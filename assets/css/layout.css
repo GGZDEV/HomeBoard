@@ -82,10 +82,10 @@
 .stage {
   flex: 1;
   min-width: 0;
-  height: 54dvh;
-  min-height: 300px;
+  height: 46dvh;
+  min-height: 260px;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 10px;
   padding: 10px;
   border-radius: 22px;
@@ -99,12 +99,14 @@
 }
 
 .stage-top { display: flex; align-items: center; gap: 8px; }
-.stage-tools { margin-left: auto; display: flex; gap: 6px; }
+/* Les commandes de zoom ne doivent jamais être poussées hors de l'écran. */
+.stage-tools { margin-left: auto; flex: none; display: flex; gap: 6px; }
 
 .floor-switch {
   display: flex;
   gap: 4px;
   padding: 4px;
+  min-width: 0;
   max-width: 100%;
   overflow-x: auto;
   scrollbar-width: none;
@@ -138,33 +140,6 @@
 }
 
 .stage-canvas { position: relative; min-height: 0; }
-
-.scene-bar {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  padding-bottom: 2px;
-}
-.scene-bar[hidden] { display: none; }
-.scene-bar::-webkit-scrollbar { display: none; }
-
-.scene-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  padding: 12px 16px;
-  min-height: 46px;
-  white-space: nowrap;
-  border-radius: 14px;
-  font-size: 13.5px;
-  color: var(--text);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  transition: transform 0.16s, background 0.18s, border-color 0.18s;
-}
-.scene-btn:active { transform: scale(0.97); }
-.scene-ico { font-size: 17px; color: var(--accent); }
 
 /* --- Panneau : feuille du bas sur mobile -------------------------------- */
 
@@ -281,6 +256,10 @@
 .nav-label { font-size: 10.5px; letter-spacing: 0.01em; }
 
 /* --- Écrans larges ------------------------------------------------------ */
+
+@media (min-width: 600px) {
+  .stage { height: 54dvh; }
+}
 
 @media (min-width: 900px) {
   .app {

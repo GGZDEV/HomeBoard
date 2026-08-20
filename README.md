@@ -1,27 +1,27 @@
 # HomeBoard
 
-Un tableau de bord **Home Assistant** avec une vue « 2.5D » isométrique de la maison,
-dessinée au doigt — sans modélisation 3D et sans écrire une ligne de JSON.
+Un tableau de bord **Home Assistant** volontairement minimal : le plan de votre
+maison en vue isométrique, vos **lumières** et vos **températures**. Rien d'autre.
 
 - **Éditeur de plan visuel** : on pose des pièces sur une grille, on les glisse, on
   tire leurs poignées, on peint des cases pour les formes en L, T ou U. Autant
-  d'étages que nécessaire.
-- **Interface qui s'adapte à votre installation** : chaque carte, chaque onglet
-  n'apparaît que si les entités correspondantes existent chez vous. Pas d'alarme ?
-  Pas d'onglet Sécurité.
-- **Pensé pour le tactile** : téléphone et tablette d'abord, avec barre d'onglets
-  au pouce, feuilles remontantes, pincer-pour-zoomer. L'écran large reste confortable.
+  d'étages que nécessaire, aucun JSON à écrire.
+- **Lumières** : allumer, éteindre, régler la luminosité et la couleur. Les pièces
+  s'illuminent sur le plan avec la teinte réelle de vos lampes.
+- **Températures** : la mesure de chaque pièce sur le plan, la moyenne intérieure et
+  l'extérieur en un coup d'œil.
+- **Pensé pour le tactile** : téléphone et tablette d'abord — barre d'onglets au
+  pouce, feuilles remontantes, pincer-pour-zoomer. L'écran large reste confortable.
 
-> Prototype fonctionnel : il tourne en **mode démo** (maison fictive animée, aucune
-> installation requise) ou en **mode direct**, branché sur l'API WebSocket de votre
-> serveur Home Assistant.
+Volets, thermostats, médias, alarme, énergie : **pas encore**. Le produit fait peu de
+choses, mais il les fait entièrement.
 
 ---
 
-## Démarrage rapide (mode démo)
+## Démarrage rapide
 
-Les modules ES ont besoin d'être servis en HTTP (l'ouverture directe du fichier
-`index.html` ne fonctionne pas) :
+Les modules ES ont besoin d'être servis en HTTP (ouvrir `index.html` directement ne
+fonctionne pas) :
 
 ```bash
 git clone https://github.com/GGZDEV/HomeBoard.git
@@ -29,40 +29,14 @@ cd HomeBoard
 python3 -m http.server 8080
 ```
 
-Puis ouvrez <http://localhost:8080>.
+Puis <http://localhost:8080>. Sans configuration, une maison de démonstration
+s'anime : c'est le mode démo, il ne touche à rien chez vous.
 
 Pour une version « un seul fichier », ouvrable sans serveur et facile à partager :
 
 ```bash
 node tools/build-single-file.js   # -> dist/homeboard.html
 ```
-
----
-
-## Dessiner sa maison
-
-Onglet **Éditeur**. Aucune connaissance technique requise.
-
-| Geste | Effet |
-|---|---|
-| **+ Pièce** | Pose une pièce de 4 × 3 là où vous regardez. |
-| Glisser une pièce | La déplace. Elle devient rouge si elle chevauche une voisine — le déplacement est alors refusé. |
-| Tirer une poignée | Redimensionne (pièces rectangulaires). |
-| **Agrandir** puis glisser | Ajoute des cases : c'est ainsi qu'on obtient un L, un T ou un U. |
-| **Rogner** puis glisser | Retire des cases. |
-| Pincer / molette | Zoom. Glisser le fond : déplacement de la vue. |
-| **↺** | Annule la dernière action (40 niveaux). |
-
-À droite (en bas sur téléphone) : le nom de la pièce, son icône, et la liste de ses
-appareils. **Ajouter** ouvre la liste des entités Home Assistant non encore placées.
-Le bouton **Rattacher les appareils automatiquement** fait le gros du travail : il
-associe `light.cuisine_plan_de_travail` à la pièce « Cuisine », etc.
-
-Les étages se gèrent dans la barre du haut : ajouter, renommer, **dupliquer** (très
-pratique, l'étage a souvent la même empreinte que le rez-de-chaussée), supprimer.
-
-Tout est enregistré au fur et à mesure dans le navigateur. **Réglages → Sauvegarde**
-permet de copier le plan pour le transférer sur un autre appareil.
 
 ---
 
@@ -101,44 +75,64 @@ panel_iframe:
 ```
 
 L'URL est alors pré-remplie avec l'origine courante : il ne reste que le jeton.
-
-Pour une tablette murale, ce panneau en plein écran est le mode d'emploi le plus
-confortable — la mise en page est prévue pour le tactile et ne demande jamais de survol.
+Pour une tablette murale, ce panneau en plein écran est le mode le plus confortable.
 
 ---
 
-## Ce qui s'affiche, et quand
+## Dessiner sa maison
 
-Rien n'est affiché « au cas où ». À chaque changement d'état, HomeBoard relit la liste
-des entités et en déduit ce qu'il peut proposer :
+Onglet **Éditeur**. Aucune connaissance technique requise.
 
-| Fonctionnalité | Condition |
+| Geste | Effet |
 |---|---|
-| Onglet **Énergie** | un capteur `device_class: power` ou `energy` |
-| Onglet **Sécurité** | une alarme, une serrure, ou un capteur d'ouverture |
-| Carte **Météo** | une entité `weather.*` ou un capteur de température extérieure |
-| Carte **Présence** | au moins une entité `person.*` |
-| Barre de **scènes** | des entités `scene.*` ou `script.*` |
-| Puces de la barre haute | idem, une par mesure réellement disponible |
+| **+ Pièce** | Pose une pièce de 4 × 3 là où vous regardez. |
+| Glisser une pièce | La déplace. Elle vire au rouge et le geste est refusé si elle chevauche une voisine. |
+| Tirer une poignée | Redimensionne (pièces rectangulaires). |
+| **Agrandir** puis glisser | Ajoute des cases : c'est ainsi qu'on obtient un L, un T ou un U. |
+| **Rogner** puis glisser | Retire des cases. |
+| Pincer / molette | Zoom. Glisser le fond déplace la vue. |
+| **↺** | Annule la dernière action (40 niveaux). |
 
-Les identifiants sont devinés par nom (`sensor.production_solaire` → production
-solaire). Pour forcer un choix, un bloc `globals` optionnel dans le plan a la
+À droite — en bas sur téléphone — le nom de la pièce, son icône et ses appareils.
+**Ajouter** ouvre la liste des lumières et capteurs de température pas encore placés ;
+**Rattacher les appareils automatiquement** fait le gros du travail en associant
+`light.cuisine_plan_de_travail` à la pièce « Cuisine ».
+
+Les étages se gèrent dans la barre du haut : ajouter, renommer, **dupliquer** (utile,
+l'étage a souvent la même empreinte que le rez-de-chaussée), supprimer.
+
+Tout est enregistré au fur et à mesure dans le navigateur. **Réglages → Sauvegarde**
+permet de copier le plan pour le transférer sur un autre appareil.
+
+---
+
+## Ce que HomeBoard lit chez vous
+
+Seules deux familles d'entités sont prises en compte :
+
+| Entités | Usage |
+|---|---|
+| `light.*` | Pilotage : marche/arrêt, luminosité et couleur si la lampe les gère |
+| `sensor.*` avec `device_class: temperature` | Lecture seule |
+
+Le capteur extérieur est reconnu à son nom (`exterieur`, `outdoor`, `jardin`,
+`terrasse`…). Pour forcer un choix, un bloc `globals` optionnel dans le plan a la
 priorité :
 
 ```json
 "globals": {
-  "power": "sensor.mon_compteur",
-  "solar": "sensor.mes_panneaux",
-  "favorites": ["light.salon", "climate.salon"]
+  "outdoorTemperature": "sensor.mon_capteur_dehors",
+  "favorites": ["light.salon"]
 }
 ```
+
+Tout le reste de votre installation est ignoré : rien n'est affiché « au cas où ».
 
 ---
 
 ## Format du plan
 
-L'éditeur produit ce fichier ; le lire n'est utile que pour comprendre ou pour
-bidouiller à la main.
+L'éditeur produit ce fichier ; le lire n'est utile que pour comprendre ou bidouiller.
 
 ```json
 {
@@ -154,7 +148,7 @@ bidouiller à la main.
           "name": "Salon",
           "icon": "sofa",
           "rects": [[0, 0, 6, 5], [6, 0, 2, 3]],
-          "entities": ["light.salon", "climate.salon"]
+          "entities": ["light.salon", "sensor.salon_temperature"]
         }
       ]
     }
@@ -164,8 +158,8 @@ bidouiller à la main.
 
 Une pièce est un **ensemble de cases de grille**, sérialisé en une liste de
 rectangles `[x, y, largeur, profondeur]`. Une pièce en L, c'est deux rectangles ;
-l'éditeur les recalcule automatiquement après chaque coup de pinceau. L'ancien
-format `x`/`y`/`w`/`h` reste accepté.
+l'éditeur les recalcule après chaque coup de pinceau. L'ancien format `x`/`y`/`w`/`h`
+reste accepté.
 
 Icônes de pièces : `sofa`, `bed`, `cooking`, `shower`, `door`, `laptop`, `car`,
 `stairs`, `tv`, `speaker`, `coffee`, `grid`.
@@ -173,6 +167,9 @@ Icônes de pièces : `sofa`, `bed`, `cooking`, `shower`, `door`, `laptop`, `car`
 ---
 
 ## Organisation du code
+
+Pas de framework, pas d'étape de build, pas de `node_modules` : du HTML, du CSS et
+des modules ES.
 
 ```
 index.html                 Squelette de la page
@@ -184,9 +181,9 @@ assets/js/app.js           Démarrage, vues, mises à jour temps réel
 assets/js/geometry.js      Cases de grille, rectangles, murs, contours
 assets/js/iso.js           Projection isométrique et rendu SVG
 assets/js/editor.js        Éditeur de plan visuel
-assets/js/capabilities.js  Détection des fonctionnalités disponibles
-assets/js/cards.js         Une carte de contrôle par domaine Home Assistant
-assets/js/views.js         Panneau latéral et vues Pièces / Énergie / Sécurité
+assets/js/capabilities.js  Lecture des lumières et températures disponibles
+assets/js/cards.js         Carte lumière et carte température
+assets/js/views.js         Panneau latéral et vue « Pièces »
 assets/js/ha.js            Client WebSocket Home Assistant
 assets/js/demo.js          Serveur simulé (même interface que ha.js)
 assets/js/settings.js      Connexion et sauvegarde du plan
@@ -195,8 +192,9 @@ assets/js/icons.js         Jeu d'icônes SVG
 tools/build-single-file.js Fabrique dist/homeboard.html (version autonome)
 ```
 
-`ha.js` et `demo.js` exposent la même interface (`connect`, `callService`) : tout le
-reste de l'application ignore lequel des deux tourne.
+`ha.js` et `demo.js` exposent la même interface (`connect`, `callService`) : le reste
+de l'application ignore lequel des deux tourne. Ajouter un domaine plus tard revient
+donc à écrire une carte dans `cards.js` et à l'autoriser dans `capabilities.js`.
 
 ---
 
@@ -208,6 +206,6 @@ reste de l'application ignore lequel des deux tourne.
   créerait un conflit.
 - Le tri de profondeur se fait par pièce : une pièce concave qui en entoure une autre
   peut s'afficher devant elle.
-- L'historique des courbes est construit pendant la session : à l'ouverture, les
-  graphiques se remplissent au fil des mesures (l'API `history` n'est pas interrogée).
-- Prototype : testé sur Chromium et Firefox récents.
+- Les courbes de température se remplissent pendant la session : l'API `history` de
+  Home Assistant n'est pas interrogée.
+- Testé sur Chromium et Firefox récents.

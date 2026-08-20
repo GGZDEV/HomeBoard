@@ -11,58 +11,35 @@
           "name": "Salon",
           "icon": "sofa",
           "rects": [[0, 0, 6, 5], [6, 0, 2, 3]],
-          "entities": [
-            "light.salon",
-            "light.salon_lampadaire",
-            "climate.salon",
-            "media_player.tv_salon",
-            "cover.salon_volet",
-            "sensor.salon_temperature",
-            "sensor.salon_humidity"
-          ]
+          "entities": ["light.salon", "light.salon_lampadaire", "sensor.salon_temperature"]
         },
         {
           "id": "cuisine",
           "name": "Cuisine",
           "icon": "cooking",
           "rects": [[8, 0, 3, 5], [6, 3, 2, 2]],
-          "entities": [
-            "light.cuisine",
-            "switch.cafetiere",
-            "sensor.cuisine_temperature",
-            "binary_sensor.cuisine_mouvement"
-          ]
+          "entities": ["light.cuisine", "sensor.cuisine_temperature"]
         },
         {
           "id": "entree",
           "name": "Entrée",
           "icon": "door",
           "rects": [[0, 5, 3, 4]],
-          "entities": ["light.entree", "lock.porte_entree", "binary_sensor.porte_entree"]
+          "entities": ["light.entree"]
         },
         {
           "id": "bureau",
           "name": "Bureau",
           "icon": "laptop",
           "rects": [[3, 5, 3, 4]],
-          "entities": [
-            "light.bureau",
-            "switch.pc_bureau",
-            "media_player.enceinte_bureau",
-            "sensor.bureau_temperature"
-          ]
+          "entities": ["light.bureau", "sensor.bureau_temperature"]
         },
         {
           "id": "garage",
           "name": "Garage",
           "icon": "car",
           "rects": [[6, 5, 5, 4]],
-          "entities": [
-            "light.garage",
-            "cover.porte_garage",
-            "sensor.voiture_batterie",
-            "binary_sensor.garage_porte"
-          ]
+          "entities": ["light.garage"]
         }
       ]
     },
@@ -75,36 +52,21 @@
           "name": "Chambre parentale",
           "icon": "bed",
           "rects": [[0, 0, 6, 5]],
-          "entities": [
-            "light.chambre",
-            "climate.chambre",
-            "cover.chambre_volet",
-            "media_player.enceinte_chambre",
-            "sensor.chambre_temperature"
-          ]
+          "entities": ["light.chambre", "sensor.chambre_temperature"]
         },
         {
           "id": "sdb",
           "name": "Salle de bain",
           "icon": "shower",
           "rects": [[6, 0, 5, 5]],
-          "entities": [
-            "light.sdb",
-            "switch.seche_serviette",
-            "sensor.sdb_humidity",
-            "sensor.sdb_temperature"
-          ]
+          "entities": ["light.sdb", "sensor.sdb_temperature"]
         },
         {
           "id": "chambre_lea",
           "name": "Chambre Léa",
           "icon": "bed",
           "rects": [[0, 5, 4, 4]],
-          "entities": [
-            "light.chambre_lea",
-            "cover.chambre_lea_volet",
-            "sensor.chambre_lea_temperature"
-          ]
+          "entities": ["light.chambre_lea", "sensor.chambre_lea_temperature"]
         },
         {
           "id": "chambre_tom",
@@ -118,7 +80,7 @@
           "name": "Palier",
           "icon": "stairs",
           "rects": [[8, 5, 3, 4]],
-          "entities": ["light.palier", "binary_sensor.palier_mouvement"]
+          "entities": ["light.palier"]
         }
       ]
     }

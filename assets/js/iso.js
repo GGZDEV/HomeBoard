@@ -241,7 +241,7 @@ export class IsoStage {
     const [ax, ay] = info.anchor;
     const c = this.project(ax + 0.5, ay + 0.5);
     const tag = el('g', {
-      class: `room-tag${info.lightsOn ? ' is-lit' : ''}${info.alert ? ' is-alert' : ''}`,
+      class: `room-tag${info.lightsOn ? ' is-lit' : ''}`,
       'data-room': room.id,
       transform: `translate(${c.x.toFixed(1)}, ${c.y.toFixed(1)})`
     });
@@ -260,15 +260,6 @@ export class IsoStage {
       tag.append(meta);
     }
 
-    if (info.pucks.length) {
-      const pucks = el('g', { class: 'tag-pucks' });
-      info.pucks.forEach((puck, i) => {
-        pucks.insertAdjacentHTML('beforeend',
-          `<g class="puck puck--${puck.tone}" transform="translate(${i * 17},-6.5) scale(0.55)">${iconInner(puck.icon)}</g>`);
-      });
-      tag.append(pucks);
-    }
-
     return tag;
   }
 
@@ -277,24 +268,19 @@ export class IsoStage {
     for (const tag of this.layerTags.querySelectorAll('.room-tag')) {
       const plate = tag.querySelector('.tag-plate');
       const texts = [...tag.querySelectorAll('text')];
-      const pucks = tag.querySelector('.tag-pucks');
-      const puckCount = pucks ? pucks.children.length : 0;
 
       let textW = 0;
       for (const t of texts) {
         try { textW = Math.max(textW, t.getBBox().width); } catch { /* non rendu */ }
       }
 
-      const puckW = puckCount ? puckCount * 17 + 6 : 0;
-      const width = Math.max(104, Math.round(34 + textW + puckW + 14));
+      const width = Math.max(104, Math.round(34 + textW + 14));
       plate.setAttribute('width', width);
       plate.setAttribute('x', -width / 2);
 
       const left = -width / 2;
       tag.querySelector('.tag-icon').setAttribute('transform', `translate(${left + 10},-8) scale(0.66)`);
-      const textX = left + 32;
-      for (const t of texts) t.setAttribute('x', textX);
-      if (pucks) pucks.setAttribute('transform', `translate(${(width / 2 - puckW + 3).toFixed(1)}, 0)`);
+      for (const t of texts) t.setAttribute('x', left + 32);
     }
   }
 
@@ -470,29 +456,19 @@ function iconInner(name) {
   return `<g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${inner}</g>`;
 }
 
-/** Résumé d'une pièce à partir des entités qui lui sont rattachées. */
+/**
+ * Résumé d'une pièce : ses lumières et sa température, rien de plus.
+ */
 export function summarize(room, entities, cells = roomCells(room)) {
   const list = (room.entities || []).map((id) => entities[id]).filter(Boolean);
 
   const lights = list.filter((e) => e.entity_id.startsWith('light.'));
   const onLights = lights.filter((e) => e.state === 'on');
-  const climate = list.find((e) => e.entity_id.startsWith('climate.'));
-  const tempSensor = list.find((e) => e.attributes?.device_class === 'temperature');
-  const humidity = list.find((e) => e.attributes?.device_class === 'humidity');
-  const media = list.find((e) => e.entity_id.startsWith('media_player.') && e.state === 'playing');
-  const openCover = list.find((e) => e.entity_id.startsWith('cover.') && e.state === 'open');
-  const motion = list.find((e) => e.attributes?.device_class === 'motion' && e.state === 'on');
-  const openDoor = list.find(
-    (e) => ['door', 'garage_door', 'window', 'opening'].includes(e.attributes?.device_class) && e.state === 'on'
-  );
-  const unlocked = list.find((e) => e.entity_id.startsWith('lock.') && e.state === 'unlocked');
-  const activeSwitch = list.find((e) => e.entity_id.startsWith('switch.') && e.state === 'on');
 
-  let temp = null;
-  if (tempSensor && Number.isFinite(Number(tempSensor.state))) temp = Number(tempSensor.state);
-  else if (climate && Number.isFinite(Number(climate.attributes?.current_temperature))) {
-    temp = Number(climate.attributes.current_temperature);
-  }
+  const sensor = list.find(
+    (e) => e.attributes?.device_class === 'temperature' && Number.isFinite(Number(e.state))
+  );
+  const temp = sensor ? Number(sensor.state) : null;
 
   const rgb = onLights
     .map((e) => e.attributes?.rgb_color)
@@ -505,33 +481,22 @@ export function summarize(room, entities, cells = roomCells(room)) {
     ? Math.max(...onLights.map((e) => (Number(e.attributes?.brightness) || 255) / 255))
     : 0;
 
-  const metaParts = [];
-  if (temp != null) metaParts.push(`${temp.toFixed(1)}°`);
-  if (humidity && Number.isFinite(Number(humidity.state))) metaParts.push(`${Math.round(Number(humidity.state))} %`);
-  if (onLights.length) metaParts.push(`${onLights.length} allumée${onLights.length > 1 ? 's' : ''}`);
-  if (!metaParts.length && list.length) metaParts.push(`${list.length} appareil${list.length > 1 ? 's' : ''}`);
-
-  const pucks = [];
-  if (onLights.length) pucks.push({ icon: 'bulb', tone: 'warm' });
-  if (media) pucks.push({ icon: media.entity_id.includes('tv') ? 'tv' : 'speaker', tone: 'accent' });
-  if (climate && climate.state !== 'off') pucks.push({ icon: 'thermometer', tone: 'heat' });
-  if (openCover) pucks.push({ icon: 'blinds', tone: 'muted' });
-  if (activeSwitch) pucks.push({ icon: 'plug', tone: 'muted' });
-  if (motion) pucks.push({ icon: 'motion', tone: 'accent' });
-  if (openDoor || unlocked) pucks.push({ icon: 'unlock', tone: 'alert' });
+  const parts = [];
+  if (temp != null) parts.push(`${temp.toFixed(1)}°`);
+  if (onLights.length) parts.push(`${onLights.length} allumée${onLights.length > 1 ? 's' : ''}`);
+  else if (lights.length) parts.push(`${lights.length} lumière${lights.length > 1 ? 's' : ''}`);
 
   const { cell, centroid } = anchorCell(cells);
 
   return {
     entities: list,
+    lights: lights.map((e) => e.entity_id),
     lightsOn: onLights.length,
     lightsTotal: lights.length,
     color,
     brightness,
     temp,
-    meta: metaParts.slice(0, 2).join(' · '),
-    pucks: pucks.slice(0, 4),
-    alert: Boolean(openDoor || unlocked),
+    meta: parts.join(' · '),
     anchor: cell,
     centroid
   };

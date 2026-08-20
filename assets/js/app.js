@@ -7,18 +7,14 @@ import { DemoBackend } from './demo.js';
 import { HomeAssistantBackend } from './ha.js';
 import { detectCapabilities } from './capabilities.js';
 import { PlanEditor } from './editor.js';
-import {
-  CardHost, renderPanel, renderRoomsView, renderEnergyView, renderSecurityView, WEATHER
-} from './views.js';
+import { CardHost, renderPanel, renderRoomsView } from './views.js';
 import { loadSettings, saveSettings, applyTheme, openSettings, validateConfig } from './settings.js';
 
-const NAV = {
-  home: { label: 'Maison', icon: 'home' },
-  rooms: { label: 'Pièces', icon: 'grid' },
-  energy: { label: 'Énergie', icon: 'zap' },
-  security: { label: 'Sécurité', icon: 'shield' },
-  editor: { label: 'Éditeur', icon: 'floorplan' }
-};
+const NAV = [
+  { id: 'home', label: 'Maison', icon: 'home' },
+  { id: 'rooms', label: 'Pièces', icon: 'grid' },
+  { id: 'editor', label: 'Éditeur', icon: 'floorplan' }
+];
 
 const app = {
   config: null,
@@ -31,8 +27,7 @@ const app = {
   editor: null,
   host: new CardHost(),
   homeNode: null,
-  dirty: false,
-  energySignature: ''
+  dirty: false
 };
 
 const ctx = {
@@ -59,7 +54,6 @@ async function boot() {
 
   app.config = resolveConfig(settings);
   app.floorId = app.config.floors[0]?.id || null;
-  // Capacités « à vide » : l'interface doit tenir debout avant la connexion.
   refreshCapabilities();
 
   buildChrome();
@@ -69,7 +63,6 @@ async function boot() {
   renderEverything();
 
   bus.on('entity', onEntityChange);
-  bus.on('entities', refreshCapabilities);
   bus.on('status', renderStatus);
   bus.on('toast', showToast);
   window.addEventListener('homeboard-toast', (ev) => showToast({ text: ev.detail.text }));
@@ -116,44 +109,32 @@ async function connect(settings) {
   }
 }
 
-/** Recalcule ce que l'installation permet d'afficher. */
 function refreshCapabilities() {
-  const before = app.caps?.views.join(',');
   app.caps = detectCapabilities(store.entities, app.config);
-  if (before && before !== app.caps.views.join(',')) {
-    renderNav();
-    if (!availableViews().includes(app.view)) setView('home');
-  }
 }
-
-const availableViews = () => [...(app.caps?.views || ['home', 'rooms']), 'editor'];
 
 // --- Squelette de l'interface -------------------------------------------
 
 function buildChrome() {
-  app.homeNode = buildHomeView();
-  renderNav();
-  setView('home');
-}
-
-function renderNav() {
   const rail = document.getElementById('rail');
   rail.replaceChildren(
     h('div', { class: 'brand-mark', html: icon('home') }),
-    h('nav', { class: 'nav', 'aria-label': 'Navigation principale' }, availableViews().map((view) => h('button', {
-      class: `nav-btn ${view === app.view ? 'is-active' : ''}`, type: 'button',
-      dataset: { view }, title: NAV[view].label, onclick: () => setView(view)
+    h('nav', { class: 'nav', 'aria-label': 'Navigation principale' }, NAV.map((item) => h('button', {
+      class: 'nav-btn', type: 'button', dataset: { view: item.id }, title: item.label,
+      onclick: () => setView(item.id)
     }, [
-      h('span', { class: 'nav-ico', html: icon(NAV[view].icon) }),
-      h('span', { class: 'nav-label', text: NAV[view].label })
+      h('span', { class: 'nav-ico', html: icon(item.icon) }),
+      h('span', { class: 'nav-label', text: item.label })
     ])))
   );
+
+  app.homeNode = buildHomeView();
+  setView('home');
 }
 
 function buildHomeView() {
   const canvas = h('div', { class: 'stage-canvas', id: 'canvas' });
   const floors = h('div', { class: 'floor-switch', id: 'floors' });
-  const scenes = h('div', { class: 'scene-bar', id: 'scenes' });
 
   const node = h('div', { class: 'stage' }, [
     h('div', { class: 'stage-top' }, [
@@ -164,8 +145,7 @@ function buildHomeView() {
         toolButton('maximize', 'Zoomer', () => app.stage.zoom(1.18))
       ])
     ]),
-    canvas,
-    scenes
+    canvas
   ]);
 
   app.stage = new IsoStage(canvas, { onSelect: selectRoom });
@@ -198,41 +178,28 @@ function renderView() {
 
   if (app.view !== 'editor') app.editor = null;
 
-  switch (app.view) {
-    case 'home':
-      root.replaceChildren(app.homeNode);
-      renderFloors();
-      renderScenes();
-      app.stage.render(ctx.floor, ctx);
-      app.stage.select(app.roomId);
-      break;
-    case 'rooms':
-      renderRoomsView(root, ctx, app.host);
-      break;
-    case 'energy':
-      renderEnergyView(root, ctx, app.host);
-      break;
-    case 'security':
-      renderSecurityView(root, ctx, app.host);
-      break;
-    case 'editor':
-      app.editor = new PlanEditor(root, {
-        config: app.config,
-        entities: store.entities,
-        onChange: () => {
-          persistConfig();
-          refreshCapabilities();
-          renderTopbar();
-        },
-        onDone: () => {
-          app.roomId = null;
-          setView('home');
-          showToast({ text: 'Plan enregistré.' });
-        }
-      });
-      break;
-    default:
-      break;
+  if (app.view === 'home') {
+    root.replaceChildren(app.homeNode);
+    renderFloors();
+    app.stage.render(ctx.floor, ctx);
+    app.stage.select(app.roomId);
+  } else if (app.view === 'rooms') {
+    renderRoomsView(root, ctx, app.host);
+  } else if (app.view === 'editor') {
+    app.editor = new PlanEditor(root, {
+      config: app.config,
+      entities: store.entities,
+      onChange: () => {
+        persistConfig();
+        refreshCapabilities();
+        renderTopbar();
+      },
+      onDone: () => {
+        app.roomId = null;
+        setView('home');
+        showToast({ text: 'Plan enregistré.' });
+      }
+    });
   }
 }
 
@@ -264,42 +231,17 @@ function renderFloors() {
   }));
 }
 
-function renderScenes() {
-  const holder = document.getElementById('scenes');
-  if (!holder) return;
-  const scenes = app.caps?.scenes || [];
-  holder.hidden = !scenes.length;
-  holder.replaceChildren(...scenes.map((scene) => h('button', {
-    class: 'scene-btn', type: 'button',
-    onclick: () => {
-      store.call(scene.id.split('.')[0], 'turn_on', { entity_id: scene.id });
-      showToast({ text: `Scène « ${scene.name} » activée` });
-    }
-  }, [
-    h('span', { class: 'scene-ico', html: icon(scene.icon || 'zap') }),
-    h('span', { class: 'scene-name', text: scene.name })
-  ])));
-}
-
 function renderTopbar() {
   const caps = app.caps || {};
-  const weather = store.get(caps.weather);
-  const [wLabel, wIcon] = WEATHER[weather?.state] || ['Météo', 'cloud'];
-  const outdoor = Number(weather?.attributes?.temperature ?? store.get(caps.outdoor)?.state);
-  const power = Number(store.get(caps.power)?.state);
-  const litCount = Object.values(store.entities)
-    .filter((e) => e.entity_id.startsWith('light.') && e.state === 'on').length;
-  const home = (caps.persons || []).map((id) => store.get(id)).filter((p) => p?.state === 'home').length;
-  const alarm = store.get(caps.alarm);
+  const outdoor = store.get(caps.outdoor);
 
-  // Chaque puce n'apparaît que si l'installation la justifie.
   const chips = [
-    caps.hasWeather && Number.isFinite(outdoor) ? chip(wIcon, `${formatNumber(outdoor)}°`, wLabel) : null,
-    litCount ? chip('bulb', String(litCount), litCount > 1 ? 'lumières' : 'lumière', true) : null,
-    caps.power && Number.isFinite(power) ? chip('zap', `${formatNumber(power)} W`, 'consommation') : null,
-    caps.hasPresence ? chip('person', String(home), 'à la maison', home > 0) : null,
-    alarm ? chip('shield', alarm.state.startsWith('armed') ? 'Armée' : 'Off', 'alarme',
-      alarm.state.startsWith('armed')) : null
+    caps.hasLights
+      ? chip('bulb', String(caps.lightsOn.length),
+        caps.lightsOn.length > 1 ? 'lumières allumées' : 'lumière allumée', caps.lightsOn.length > 0)
+      : null,
+    caps.indoorAverage != null ? chip('thermometer', `${formatNumber(caps.indoorAverage)}°`, 'intérieur') : null,
+    outdoor ? chip('cloud', `${formatNumber(outdoor.state)}°`, 'extérieur') : null
   ].filter(Boolean);
 
   document.getElementById('topbar').replaceChildren(
@@ -313,7 +255,7 @@ function renderTopbar() {
         class: 'status', id: 'status', type: 'button', onclick: showSettings, 'aria-label': 'État de la connexion'
       }, [h('span', { class: 'status-dot' }), h('span', { class: 'status-text' })]),
       h('button', {
-        class: 'ibtn', id: 'theme-btn', type: 'button', title: 'Thème clair / sombre',
+        class: 'ibtn', id: 'theme-btn', type: 'button', title: 'Thème clair ou sombre',
         'aria-label': 'Basculer le thème', html: icon('moon'), onclick: toggleTheme
       }),
       h('button', {
@@ -352,7 +294,7 @@ function renderThemeIcon(theme) {
 // --- Interactions --------------------------------------------------------
 
 function setView(view) {
-  app.view = availableViews().includes(view) ? view : 'home';
+  app.view = NAV.some((item) => item.id === view) ? view : 'home';
   renderView();
   renderPanelNow();
 }
@@ -403,7 +345,6 @@ function showSettings() {
       }
       if (reconnect) await connect(settings);
       refreshCapabilities();
-      renderNav();
       renderEverything();
     }
   });
@@ -418,12 +359,13 @@ function onEntityChange(entity) {
   app.host.update(entity);
   app.dirty = true;
   if (frame) return;
+
   frame = requestAnimationFrame(() => {
     frame = null;
-    if (!app.dirty) return;
+    if (!app.dirty || app.view === 'editor') return;
     app.dirty = false;
-    if (app.view === 'editor') return;
 
+    refreshCapabilities();
     renderTopbar();
 
     const now = performance.now();
@@ -432,21 +374,6 @@ function onEntityChange(entity) {
       renderFloors();
       app.stage.render(ctx.floor, ctx);
       app.stage.select(app.roomId);
-    }
-
-    // La vue Énergie liste les appareils actifs : on ne la reconstruit que si
-    // cette liste change réellement, pour ne pas casser un curseur en cours.
-    if (app.view === 'energy') {
-      const signature = Object.values(store.entities)
-        .filter((e) => /^(light|switch|media_player)\./.test(e.entity_id)
-          && e.state !== 'off' && e.state !== 'unavailable')
-        .map((e) => e.entity_id).join('|');
-      if (signature !== app.energySignature) {
-        app.energySignature = signature;
-        app.host.reset();
-        renderEnergyView(document.getElementById('view-root'), ctx, app.host);
-        renderPanelNow();
-      }
     }
   });
 }
