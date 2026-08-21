@@ -146,8 +146,13 @@ export class PlanEditor {
       }
     }, [h('span', { text: floor.name })]));
 
+    const tabsNode = h('div', { class: 'ed-floor-tabs' }, tabs);
+    requestAnimationFrame(() => {
+      tabsNode.classList.toggle('is-scrollable', tabsNode.scrollWidth > tabsNode.clientWidth + 1);
+    });
+
     this.topBar.replaceChildren(
-      h('div', { class: 'ed-floor-tabs' }, tabs),
+      tabsNode,
       h('button', {
         class: 'ibtn ed-menu-btn', type: 'button', title: 'Plus d’actions',
         'aria-label': 'Plus d’actions', html: icon('settings'),
@@ -176,7 +181,12 @@ export class PlanEditor {
       document.removeEventListener('pointerdown', onOutside, true);
       document.removeEventListener('keydown', onKey);
     };
-    const onOutside = (ev) => { if (!menu.contains(ev.target) && ev.target !== anchor) close(); };
+    const onOutside = (ev) => {
+      if (menu.contains(ev.target) || ev.target === anchor) return;
+      close();
+      // Le même appui ne doit pas enchaîner sur un geste dans le plan.
+      if (this.svg.contains(ev.target)) this.menuJustClosed = true;
+    };
     const onKey = (ev) => { if (ev.key === 'Escape') close(); };
 
     const menu = h('div', { class: 'ed-menu', role: 'menu' }, items.map(([ico, label, run]) => h('button', {
@@ -186,7 +196,13 @@ export class PlanEditor {
       onclick: () => { close(); run(); }
     })));
 
-    this.canvasWrap.append(menu);
+    // Attaché au document et positionné sous le bouton : ni rogné par le
+    // canevas, ni masqué par la feuille de la pièce sélectionnée.
+    document.body.append(menu);
+    const a = anchor.getBoundingClientRect();
+    menu.style.top = `${Math.round(a.bottom + 8)}px`;
+    menu.style.right = `${Math.round(window.innerWidth - a.right)}px`;
+
     document.addEventListener('pointerdown', onOutside, true);
     document.addEventListener('keydown', onKey);
   }
@@ -511,29 +527,51 @@ export class PlanEditor {
     this.applyCamera();
   }
 
+  /** Un geste d'édition ne doit jamais être détourné par un second doigt. */
+  static EDIT_GESTURES = ['move', 'resize', 'paint', 'erase'];
+
+  /**
+   * Vrai seulement si une modification est réellement engagée. Tant que le
+   * premier doigt n'a rien bougé, un second doigt doit pouvoir zoomer —
+   * sinon poser le pouce sur une pièce empêcherait tout pincement.
+   */
+  isEditing() {
+    return Boolean(this.gesture && this.gesture.moved
+      && PlanEditor.EDIT_GESTURES.includes(this.gesture.type));
+  }
+
+  /** Instantané pris au premier changement réel, pas au premier contact. */
+  ensureSnapshot(gesture) {
+    if (gesture.snapped) return;
+    gesture.snapped = true;
+    this.snapshot();
+  }
+
   onPointerDown(ev) {
     if (ev.pointerType === 'mouse' && ev.button !== 0) return;
-    this.pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
 
-    if (this.pointers.size === 2) {
-      const [a, b] = [...this.pointers.values()];
-      this.gesture = {
-        type: 'pinch',
-        dist: Math.hypot(a.x - b.x, a.y - b.y),
-        scale: this.camera.s,
-        mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
-        cam: { ...this.camera }
-      };
+    // Le pointeur qui vient de fermer le menu ne doit pas enchaîner sur un geste.
+    if (this.menuJustClosed) {
+      this.menuJustClosed = false;
       return;
     }
-    if (this.pointers.size > 2) return;
+
+    this.pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+
+    if (this.pointers.size >= 2) {
+      // Déplacement, poignée ou pinceau en cours : l'édition prime sur le zoom,
+      // le doigt supplémentaire est simplement ignoré.
+      if (this.isEditing()) return;
+      this.startPinch();
+      return;
+    }
 
     const handle = ev.target.closest?.('.ed-handle');
     const roomNode = ev.target.closest?.('.ed-room');
     const cell = this.cellAt(ev.clientX, ev.clientY);
+    this.activeId = ev.pointerId;
 
     if (handle && this.room) {
-      this.snapshot();
       this.gesture = {
         type: 'resize', handle: handle.dataset.handle,
         rect: normalizeRects(this.room)[0], roomId: this.roomId,
@@ -550,21 +588,19 @@ export class PlanEditor {
         this.gesture = null;
         return;
       }
-      this.snapshot();
       this.gesture = {
         type: this.tool, roomId: this.roomId,
         cells: roomCells(this.room),
         taken: occupiedCells(this.floor, this.roomId), moved: false
       };
-      this.applyBrush(cell);
       this.capture(ev);
+      this.applyBrush(cell);
       return;
     }
 
     if (roomNode) {
       const roomId = roomNode.dataset.room;
       if (roomId !== this.roomId) this.select(roomId);
-      this.snapshot();
       this.gesture = {
         type: 'move', roomId, origin: cell, delta: [0, 0], moved: false,
         cells: roomCells(this.floor.rooms.find((r) => r.id === roomId)),
@@ -574,9 +610,18 @@ export class PlanEditor {
       return;
     }
 
+    this.gesture = { type: 'pan', x: ev.clientX, y: ev.clientY, cam: { ...this.camera }, moved: false };
+  }
+
+  startPinch() {
+    const [a, b] = [...this.pointers.values()];
+    this.activeId = null;
     this.gesture = {
-      type: 'pan', x: ev.clientX, y: ev.clientY,
-      cam: { ...this.camera }, moved: false
+      type: 'pinch',
+      dist: Math.hypot(a.x - b.x, a.y - b.y) || 1,
+      scale: this.camera.s,
+      mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+      cam: { ...this.camera }
     };
   }
 
@@ -590,7 +635,8 @@ export class PlanEditor {
     const g = this.gesture;
     if (!g) return;
 
-    if (g.type === 'pinch' && this.pointers.size >= 2) {
+    if (g.type === 'pinch') {
+      if (this.pointers.size < 2) return;
       const [a, b] = [...this.pointers.values()];
       const dist = Math.hypot(a.x - b.x, a.y - b.y);
       const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
@@ -603,9 +649,11 @@ export class PlanEditor {
       this.camera.x = g.cam.x + (mid.x - g.mid.x) - (px - g.cam.x) * (ratio - 1);
       this.camera.y = g.cam.y + (mid.y - g.mid.y) - (py - g.cam.y) * (ratio - 1);
       this.applyCamera();
-      g.moved = true;
       return;
     }
+
+    // Tous les autres gestes appartiennent au doigt qui les a commencés.
+    if (this.activeId !== null && ev.pointerId !== this.activeId) return;
 
     if (g.type === 'pan') {
       const dx = ev.clientX - g.x;
@@ -624,7 +672,10 @@ export class PlanEditor {
       const dy = cell[1] - g.origin[1];
       if (dx === g.delta[0] && dy === g.delta[1]) return;
       g.delta = [dx, dy];
-      if (dx || dy) g.moved = true;
+      if (dx || dy) {
+        g.moved = true;
+        this.ensureSnapshot(g);
+      }
       const next = translateCells(g.cells, dx, dy);
       g.preview = next;
       this.previewRoom(g.roomId, next, collides(next, g.taken));
@@ -634,8 +685,10 @@ export class PlanEditor {
     if (g.type === 'resize') {
       const next = resizeRect(g.rect, g.handle, cell);
       if (sameRect(next, g.lastRect)) return;
+      if (sameRect(next, g.rect)) return;
       g.lastRect = next;
       g.moved = true;
+      this.ensureSnapshot(g);
       const cells = cellsOfRect(...next);
       g.preview = cells;
       this.previewRoom(g.roomId, cells, collides(cells, g.taken));
@@ -658,35 +711,51 @@ export class PlanEditor {
       g.cells.delete(k);
     }
     g.moved = true;
+    this.ensureSnapshot(g);
     g.preview = new Set(g.cells);
     this.previewRoom(g.roomId, g.cells, false);
   }
 
   onPointerUp(ev) {
+    const wasActive = this.activeId === ev.pointerId;
     this.pointers.delete(ev.pointerId);
     try { this.svg.releasePointerCapture(ev.pointerId); } catch { /* ignore */ }
+
     const g = this.gesture;
-    if (this.pointers.size > 0) return;
-    this.gesture = null;
     if (!g) return;
+
+    // Un doigt se lève pendant un pincement : on repasse proprement en
+    // déplacement de vue avec celui qui reste, plutôt que de rester bloqué.
+    if (g.type === 'pinch') {
+      if (this.pointers.size >= 2) return;
+      const remaining = [...this.pointers.entries()][0];
+      this.gesture = remaining
+        ? { type: 'pan', x: remaining[1].x, y: remaining[1].y, cam: { ...this.camera }, moved: true }
+        : null;
+      this.activeId = remaining ? remaining[0] : null;
+      return;
+    }
+
+    if (!wasActive && this.pointers.size > 0) return;
+
+    this.gesture = null;
+    this.activeId = null;
 
     if (g.type === 'pan') {
       if (!g.moved) this.select(null);
       return;
     }
-    if (g.type === 'pinch') return;
 
     const room = this.floor.rooms.find((r) => r.id === g.roomId);
     if (!room) return;
 
     if (!g.moved || !g.preview) {
-      this.history.pop();
       this.renderCanvas();
       return;
     }
 
     if ((g.type === 'move' || g.type === 'resize') && collides(g.preview, g.taken)) {
-      this.history.pop();
+      if (g.snapped) this.history.pop();
       this.toast('Impossible : la pièce en chevaucherait une autre.');
       this.renderCanvas();
       return;
@@ -698,6 +767,8 @@ export class PlanEditor {
 
   select(roomId) {
     this.roomId = roomId;
+    if (!roomId) this.tool = 'select';
+    this.canvasWrap.dataset.tool = this.tool;
     for (const [id, node] of this.nodes) {
       node.group.classList.toggle('is-selected', id === roomId);
     }

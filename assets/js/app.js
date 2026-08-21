@@ -259,6 +259,14 @@ function renderFloors() {
       lit ? h('span', { class: 'floor-dot', title: `${lit} lumière(s) allumée(s)` }) : null
     ]);
   }));
+  markScrollable(holder);
+}
+
+/** Signale par un dégradé qu'une bande défile horizontalement. */
+function markScrollable(node) {
+  requestAnimationFrame(() => {
+    node.classList.toggle('is-scrollable', node.scrollWidth > node.clientWidth + 1);
+  });
 }
 
 function renderTopbar() {

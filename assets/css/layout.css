@@ -105,7 +105,9 @@
   overflow: hidden;
 }
 
-.stage-top { display: flex; align-items: center; gap: 8px; }
+/* min-width: auto est la valeur par défaut d'un élément de grille : sans ce
+   0, la rangée refuse de se comprimer et déborde du cadre du plan. */
+.stage-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
 /* Les commandes de zoom ne doivent jamais être poussées hors de l'écran. */
 .stage-tools { margin-left: auto; flex: none; display: flex; gap: 6px; }
 
@@ -122,6 +124,11 @@
   border: 1px solid var(--border);
 }
 .floor-switch[hidden] { display: none; }
+/* Le dégradé indique que la bande continue au-delà du bord. */
+.floor-switch.is-scrollable {
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+}
 
 .floor-btn {
   display: flex;
