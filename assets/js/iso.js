@@ -376,6 +376,11 @@ export class IsoStage {
 
     svg.addEventListener('pointerdown', (ev) => {
       if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+      // Un relâchement perdu laisserait un pointeur fantôme : on repart net.
+      if (ev.isPrimary && this.pointers.size) {
+        this.pointers.clear();
+        gesture.mode = null;
+      }
       this.pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
       this.dragged = false;
 
@@ -439,8 +444,9 @@ export class IsoStage {
         gesture.start = { x: only.x, y: only.y, cx: this.camera.x, cy: this.camera.y };
       }
     };
-    svg.addEventListener('pointerup', endPointer);
-    svg.addEventListener('pointercancel', endPointer);
+    // Écoute sur la fenêtre : le doigt peut se lever hors du plan.
+    window.addEventListener('pointerup', endPointer);
+    window.addEventListener('pointercancel', endPointer);
   }
 }
 

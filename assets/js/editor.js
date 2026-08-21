@@ -511,8 +511,22 @@ export class PlanEditor {
 
     svg.addEventListener('pointerdown', (ev) => this.onPointerDown(ev));
     svg.addEventListener('pointermove', (ev) => this.onPointerMove(ev));
-    svg.addEventListener('pointerup', (ev) => this.onPointerUp(ev));
-    svg.addEventListener('pointercancel', (ev) => this.onPointerUp(ev));
+
+    // Le relâchement est écouté sur la fenêtre : un doigt levé au-dessus de la
+    // feuille ou du dock ne doit jamais rester enregistré, sinon le toucher
+    // suivant passerait pour un second doigt et rien ne serait plus
+    // sélectionnable.
+    this.onRelease = (ev) => this.onPointerUp(ev);
+    window.addEventListener('pointerup', this.onRelease);
+    window.addEventListener('pointercancel', this.onRelease);
+  }
+
+  /** À appeler en quittant l'éditeur : sinon les écouteurs s'accumulent. */
+  destroy() {
+    window.removeEventListener('pointerup', this.onRelease);
+    window.removeEventListener('pointercancel', this.onRelease);
+    this.pointers.clear();
+    this.gesture = null;
   }
 
   zoomAt(clientX, clientY, factor) {
@@ -554,6 +568,15 @@ export class PlanEditor {
     if (this.menuJustClosed) {
       this.menuJustClosed = false;
       return;
+    }
+
+    // Filet de sécurité : un premier contact alors que des pointeurs sont
+    // encore listés signale un relâchement perdu — on repart d'une ardoise
+    // propre plutôt que de rester bloqué.
+    if (ev.isPrimary && this.pointers.size) {
+      this.pointers.clear();
+      this.gesture = null;
+      this.activeId = null;
     }
 
     this.pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });

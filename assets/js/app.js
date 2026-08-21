@@ -192,7 +192,10 @@ function renderView() {
   }
   document.getElementById('app').classList.toggle('is-editing', app.view === 'editor');
 
-  if (app.view !== 'editor') app.editor = null;
+  if (app.editor) {
+    app.editor.destroy();
+    app.editor = null;
+  }
 
   if (app.view === 'home') {
     root.replaceChildren(app.homeNode);
