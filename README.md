@@ -7,7 +7,11 @@ maison en vue isométrique, vos **lumières** et vos **températures**. Rien d'a
   tire leurs poignées, on peint des cases pour les formes en L, T ou U. Autant
   d'étages que nécessaire, aucun JSON à écrire.
 - **Lumières** : allumer, éteindre, régler la luminosité et la couleur. Les pièces
-  s'illuminent sur le plan avec la teinte réelle de vos lampes.
+  s'illuminent sur le plan avec la teinte réelle de vos lampes — sol, murs et
+  mobilier prennent la couleur.
+- **Plan habité** : murs épais, revêtements de sol selon le type de pièce, ombres
+  de contact et mobilier généré (canapé, lit, cuisine, baignoire, escalier…).
+  Tout est dessiné à partir du plan, il n'y a aucune image à fournir.
 - **Températures** : la mesure de chaque pièce sur le plan, la moyenne intérieure et
   l'extérieur en un coup d'œil.
 - **Pensé pour le tactile** : téléphone et tablette d'abord — barre d'onglets au
@@ -186,6 +190,7 @@ assets/css/components.css  Plan isométrique, cartes, contrôles, éditeur
 assets/js/app.js           Démarrage, vues, mises à jour temps réel
 assets/js/geometry.js      Cases de grille, rectangles, murs, contours
 assets/js/iso.js           Projection isométrique et rendu SVG
+assets/js/furniture.js     Mobilier isométrique généré
 assets/js/editor.js        Éditeur de plan visuel
 assets/js/capabilities.js  Lecture des lumières et températures disponibles
 assets/js/cards.js         Carte lumière et carte température
@@ -208,6 +213,8 @@ donc à écrire une carte dans `cards.js` et à l'autoriser dans `capabilities.j
 
 - Les murs sont générés sur les deux côtés arrière de chaque pièce (vue « en coupe »
   isométrique) : pas de portes ni de fenêtres dessinées.
+- Le mobilier est déduit de l'icône de la pièce et posé dans son plus grand
+  rectangle plein : il illustre l'usage, il ne reproduit pas votre agencement.
 - Les pièces ne peuvent pas se chevaucher ; l'éditeur refuse un déplacement qui
   créerait un conflit.
 - Le tri de profondeur se fait par pièce : une pièce concave qui en entoure une autre

@@ -102,8 +102,12 @@ export function floorBounds(floor) {
   return boundsOfCells(floorCells(floor));
 }
 
-/** Case représentative où poser l'étiquette : la plus proche du centre de gravité. */
-export function anchorCell(cells) {
+/**
+ * Case représentative où poser l'étiquette.
+ * `biasY` décale la cible vers l'avant de la pièce : le mobilier étant adossé
+ * aux murs du fond, l'étiquette se pose ainsi sur le sol dégagé.
+ */
+export function anchorCell(cells, biasY = 0) {
   let sx = 0;
   let sy = 0;
   for (const k of cells) {
@@ -114,11 +118,14 @@ export function anchorCell(cells) {
   const cx = sx / cells.size;
   const cy = sy / cells.size;
 
+  const { maxY } = boundsOfCells(cells);
+  const targetY = cy + Math.min(biasY, Math.max(0, (maxY - cy) * 0.7));
+
   let best = null;
   let bestDist = Infinity;
   for (const k of cells) {
     const [x, y] = parseKey(k);
-    const d = (x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2;
+    const d = (x + 0.5 - cx) ** 2 + (y + 0.5 - targetY) ** 2;
     if (d < bestDist) { bestDist = d; best = [x, y]; }
   }
   return { cell: best || [0, 0], centroid: [cx, cy] };
@@ -161,6 +168,41 @@ export function depthKey(cells) {
     if (x + y < min) min = x + y;
   }
   return min;
+}
+
+/**
+ * Plus grand rectangle plein contenu dans un ensemble de cases.
+ * Sert à poser le mobilier : on est certain de rester dans la pièce, même
+ * pour une forme en L ou en U. Méthode classique de l'histogramme.
+ */
+export function largestRect(cells) {
+  if (!cells.size) return null;
+  const b = boundsOfCells(cells);
+  const heights = new Array(b.w).fill(0);
+  let best = null;
+
+  for (let y = b.minY; y < b.maxY; y += 1) {
+    for (let i = 0; i < b.w; i += 1) {
+      heights[i] = cells.has(key(b.minX + i, y)) ? heights[i] + 1 : 0;
+    }
+
+    // Plus grand rectangle sous l'histogramme de la ligne courante.
+    const stack = [];
+    for (let i = 0; i <= b.w; i += 1) {
+      const h = i === b.w ? 0 : heights[i];
+      let start = i;
+      while (stack.length && stack[stack.length - 1].h >= h) {
+        const top = stack.pop();
+        const area = top.h * (i - top.i);
+        if (!best || area > best.w * best.h) {
+          best = { x: b.minX + top.i, y: y - top.h + 1, w: i - top.i, h: top.h };
+        }
+        start = top.i;
+      }
+      stack.push({ i: start, h });
+    }
+  }
+  return best;
 }
 
 export function translateCells(cells, dx, dy) {

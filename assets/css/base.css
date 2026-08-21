@@ -43,6 +43,18 @@
   --iso-outline: rgba(255, 255, 255, 0.07);
   --tag-bg: rgba(9, 14, 24, 0.72);
   --tag-border: rgba(255, 255, 255, 0.1);
+  --iso-cap: #4e5f80;
+  --iso-material: rgba(255, 255, 255, 0.06);
+  --iso-ao: rgba(0, 0, 0, 0.34);
+
+  /* Mobilier : trois faces par boîte, plus une teinte tissu */
+  --furn-top: #4a5871;
+  --furn-south: #39445b;
+  --furn-east: #303a4e;
+  --furn-accent-top: #665b58;
+  --furn-accent-south: #4e4644;
+  --furn-accent-east: #423b39;
+  --furn-rug: rgba(255, 255, 255, 0.05);
 
   /* Éditeur de plan */
   --ed-grid: rgba(255, 255, 255, 0.07);
@@ -89,6 +101,17 @@
   --iso-outline: rgba(30, 50, 90, 0.18);
   --tag-bg: rgba(255, 255, 255, 0.86);
   --tag-border: rgba(20, 40, 80, 0.1);
+  --iso-cap: #f2f6fd;
+  --iso-material: rgba(20, 45, 90, 0.08);
+  --iso-ao: rgba(20, 45, 90, 0.16);
+
+  --furn-top: #ccd7e8;
+  --furn-south: #b0bed4;
+  --furn-east: #9dadc6;
+  --furn-accent-top: #ded1c9;
+  --furn-accent-south: #c5b3a9;
+  --furn-accent-east: #b5a297;
+  --furn-rug: rgba(20, 45, 90, 0.07);
 
   --ed-grid: rgba(20, 40, 80, 0.09);
   --ed-axis: rgba(20, 40, 80, 0.2);

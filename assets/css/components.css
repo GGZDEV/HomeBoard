@@ -28,7 +28,46 @@
 .room.is-dimmed { opacity: 0.42; }
 
 .room-floor { stroke: none; }
+.room-material { stroke: none; pointer-events: none; }
 .room-tint, .room-glow { pointer-events: none; }
+
+/* Ombre de contact au pied des murs : c'est elle qui « pose » les volumes. */
+.room-ao { fill: var(--iso-ao); stroke: none; pointer-events: none; }
+
+/* Dessus des murs : l'épaisseur donne le relief. */
+.wall-cap { fill: var(--iso-cap); stroke: none; }
+
+/* Une pièce allumée éclaire ses propres murs. */
+.wall-bounce {
+  fill: var(--lit, var(--warm));
+  opacity: 0.16;
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+:root[data-theme='light'] .wall-bounce { mix-blend-mode: multiply; opacity: 0.1; }
+
+/* --- Mobilier généré ---------------------------------------------------- */
+
+.f-top, .f-south, .f-east,
+.f-top-accent, .f-south-accent, .f-east-accent,
+.f-rug, .f-tray { stroke: none; pointer-events: none; }
+
+.f-top { fill: var(--furn-top); }
+.f-south { fill: var(--furn-south); }
+.f-east { fill: var(--furn-east); }
+.f-top-accent { fill: var(--furn-accent-top); }
+.f-south-accent { fill: var(--furn-accent-south); }
+.f-east-accent { fill: var(--furn-accent-east); }
+.f-rug { fill: var(--furn-rug); }
+.f-tray { fill: var(--iso-cap); opacity: 0.5; }
+
+/* Le mobilier d'une pièce allumée prend la teinte de la lumière. */
+.room.is-lit .f-top { fill: color-mix(in srgb, var(--lit) 20%, var(--furn-top)); }
+.room.is-lit .f-south { fill: color-mix(in srgb, var(--lit) 12%, var(--furn-south)); }
+.room.is-lit .f-east { fill: color-mix(in srgb, var(--lit) 9%, var(--furn-east)); }
+.room.is-lit .f-top-accent { fill: color-mix(in srgb, var(--lit) 20%, var(--furn-accent-top)); }
+.room.is-lit .f-south-accent { fill: color-mix(in srgb, var(--lit) 12%, var(--furn-accent-south)); }
+.room.is-lit .f-east-accent { fill: color-mix(in srgb, var(--lit) 9%, var(--furn-accent-east)); }
 .room-glow { mix-blend-mode: screen; }
 :root[data-theme='light'] .room-glow { mix-blend-mode: multiply; opacity: 0.75; }
 
@@ -54,8 +93,8 @@
 .tag-plate { fill: var(--tag-bg); stroke: var(--tag-border); stroke-width: 1; }
 .tag-icon { color: var(--accent); opacity: 0.9; }
 .room-tag.is-lit .tag-icon { color: var(--warm); }
-.tag-name { fill: var(--text); font-size: 12.5px; font-weight: 600; dominant-baseline: middle; }
-.tag-meta { fill: var(--muted); font-size: 10.5px; dominant-baseline: middle; }
+.tag-name { fill: var(--text); font-size: 11.5px; font-weight: 600; dominant-baseline: middle; }
+.tag-meta { fill: var(--muted); font-size: 9.5px; dominant-baseline: middle; }
 
 @keyframes pulse {
   0%, 100% { opacity: 1; }

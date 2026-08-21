@@ -11,13 +11,39 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 const CSS = ['base', 'layout', 'components'];
-// Ordre de dépendance : chaque module ne référence que les précédents.
-const JS = [
-  'store', 'icons', 'cards', 'geometry', 'capabilities',
-  'iso', 'demo', 'ha', 'editor', 'views', 'settings', 'app'
-];
+const ENTRY = 'app';
 
 const read = (...p) => fs.readFileSync(path.join(ROOT, ...p), 'utf8');
+
+/**
+ * Ordre de concaténation déduit des `import` : ajouter un module au projet
+ * suffit, il n'y a pas de liste à tenir à jour ici.
+ */
+function moduleOrder(entry) {
+  const order = [];
+  const seen = new Map(); // 'visiting' | 'done'
+
+  const visit = (name, stack) => {
+    if (seen.get(name) === 'done') return;
+    if (seen.get(name) === 'visiting') {
+      throw new Error(`Dépendance circulaire : ${[...stack, name].join(' -> ')}`);
+    }
+    seen.set(name, 'visiting');
+
+    const src = read('assets', 'js', `${name}.js`);
+    for (const m of src.matchAll(/from '\.\/([a-z-]+)\.js'/g)) {
+      visit(m[1], [...stack, name]);
+    }
+
+    seen.set(name, 'done');
+    order.push(name);
+  };
+
+  visit(entry, []);
+  return order;
+}
+
+const JS = moduleOrder(ENTRY);
 
 /**
  * Retire les `import`/`export` : tout se retrouve dans une seule portée.

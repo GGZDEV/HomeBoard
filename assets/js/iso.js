@@ -7,12 +7,21 @@
  * coutures d'anticrénelage entre cases voisines.
  */
 import { icon as iconSvg } from './icons.js';
+import { furnitureFor } from './furniture.js';
 import {
-  key, parseKey, roomCells, wallEdges, borderEdges, anchorCell, depthKey, floorBounds, floorCells
+  key, parseKey, roomCells, wallEdges, borderEdges, anchorCell, depthKey, floorBounds,
+  floorCells, largestRect
 } from './geometry.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const DEFAULT_LIGHT = [255, 198, 132];
+const WALL_THICKNESS = 0.16;   // en cases de grille
+const AO_DEPTH = 0.16;         // ombre de contact au pied des murs
+
+/** Revêtement de sol déduit du type de pièce. */
+const MATERIALS = {
+  cooking: 'tile', shower: 'tile', car: 'concrete'
+};
 
 const el = (tag, attrs = {}) => {
   const node = document.createElementNS(SVG_NS, tag);
@@ -122,6 +131,18 @@ export class IsoStage {
         <stop offset="0%" stop-color="var(--iso-wall-b1)"/>
         <stop offset="100%" stop-color="var(--iso-wall-b2)"/>
       </linearGradient>
+      <pattern id="mat-wood" patternUnits="userSpaceOnUse" width="1" height="1"
+        patternTransform="matrix(${this.tile.tw / 2} ${this.tile.th / 2} ${-this.tile.tw / 2} ${this.tile.th / 2} 0 0)">
+        <path d="M0 0H1M0 0.5H1M0.5 0V0.5M0 0.5V1" fill="none" stroke="var(--iso-material)" stroke-width="0.022"/>
+      </pattern>
+      <pattern id="mat-tile" patternUnits="userSpaceOnUse" width="0.5" height="0.5"
+        patternTransform="matrix(${this.tile.tw / 2} ${this.tile.th / 2} ${-this.tile.tw / 2} ${this.tile.th / 2} 0 0)">
+        <path d="M0 0H0.5M0 0V0.5" fill="none" stroke="var(--iso-material)" stroke-width="0.028"/>
+      </pattern>
+      <pattern id="mat-concrete" patternUnits="userSpaceOnUse" width="1" height="1"
+        patternTransform="matrix(${this.tile.tw / 2} ${this.tile.th / 2} ${-this.tile.tw / 2} ${this.tile.th / 2} 0 0)">
+        <path d="M0 0H1M0 0V1" fill="none" stroke="var(--iso-material)" stroke-width="0.014"/>
+      </pattern>
       <radialGradient id="iso-ground">
         <stop offset="0%" stop-color="var(--iso-ground)" stop-opacity="0.5"/>
         <stop offset="100%" stop-color="var(--iso-ground)" stop-opacity="0"/>
@@ -171,15 +192,36 @@ export class IsoStage {
       const [x, y] = parseKey(k);
       floorPath.push(this.cellPath(x, y));
     }
+    const floorD = floorPath.join('');
 
     const { north, west } = wallEdges(cells);
-    const northPath = north.map(([x, y]) =>
+    const T = WALL_THICKNESS;
+
+    // Faces intérieures — celles que l'on voit depuis le point de vue.
+    const northFace = north.map(([x, y]) =>
       `M${this.pt(x, y)}L${this.pt(x + 1, y)}L${this.pt(x + 1, y, wall)}L${this.pt(x, y, wall)}Z`).join('');
-    const westPath = west.map(([x, y]) =>
+    const westFace = west.map(([x, y]) =>
       `M${this.pt(x, y)}L${this.pt(x, y + 1)}L${this.pt(x, y + 1, wall)}L${this.pt(x, y, wall)}Z`).join('');
+
+    // Dessus des murs : c'est l'épaisseur qui donne le relief.
+    const capPath = [
+      ...north.map(([x, y]) =>
+        `M${this.pt(x, y - T, wall)}L${this.pt(x + 1, y - T, wall)}L${this.pt(x + 1, y, wall)}L${this.pt(x, y, wall)}Z`),
+      ...west.map(([x, y]) =>
+        `M${this.pt(x - T, y, wall)}L${this.pt(x - T, y + 1, wall)}L${this.pt(x, y + 1, wall)}L${this.pt(x, y, wall)}Z`)
+    ].join('');
+
     const rimPath = [
       ...north.map(([x, y]) => `M${this.pt(x, y, wall)}L${this.pt(x + 1, y, wall)}`),
       ...west.map(([x, y]) => `M${this.pt(x, y, wall)}L${this.pt(x, y + 1, wall)}`)
+    ].join('');
+
+    // Ombre de contact au pied des murs.
+    const aoPath = [
+      ...north.map(([x, y]) =>
+        `M${this.pt(x, y)}L${this.pt(x + 1, y)}L${this.pt(x + 1, y + AO_DEPTH)}L${this.pt(x, y + AO_DEPTH)}Z`),
+      ...west.map(([x, y]) =>
+        `M${this.pt(x, y)}L${this.pt(x, y + 1)}L${this.pt(x + AO_DEPTH, y + 1)}L${this.pt(x + AO_DEPTH, y)}Z`)
     ].join('');
 
     const g = el('g', {
@@ -189,9 +231,12 @@ export class IsoStage {
       role: 'button',
       'aria-label': `${room.name}${info.temp != null ? `, ${info.temp} degrés` : ''}`
     });
+    if (info.lightsOn) g.style.setProperty('--lit', `rgb(${info.color.join(',')})`);
 
-    const floorNode = el('path', { class: 'room-floor', d: floorPath.join(''), fill: 'url(#iso-floor)' });
-    g.append(floorNode);
+    g.append(el('path', { class: 'room-floor', d: floorD, fill: 'url(#iso-floor)' }));
+
+    const material = MATERIALS[room.icon] || 'wood';
+    g.append(el('path', { class: `room-material room-material--${material}`, d: floorD, fill: `url(#mat-${material})` }));
 
     if (info.lightsOn) {
       const gradId = `glow-${this.floor.id}-${room.id}`;
@@ -208,7 +253,7 @@ export class IsoStage {
       const spread = Math.sqrt(cells.size);
       g.append(
         el('path', {
-          class: 'room-tint', d: floorPath.join(''),
+          class: 'room-tint', d: floorD,
           fill: `rgb(${r},${gr},${b})`, opacity: (0.06 + info.brightness * 0.14).toFixed(3)
         }),
         el('ellipse', {
@@ -219,20 +264,28 @@ export class IsoStage {
       );
     }
 
-    // Le contour ne suit que le pourtour de la pièce : tracer le chemin des
-    // cases dessinerait toutes les jointures internes.
+    g.append(
+      el('path', { class: 'room-ao', d: aoPath }),
+      el('path', { class: 'wall wall--left', d: westFace, fill: 'url(#iso-wall-b)' }),
+      el('path', { class: 'wall wall--right', d: northFace, fill: 'url(#iso-wall-a)' }),
+      el('path', { class: 'wall-cap', d: capPath }),
+      el('path', { class: 'wall-rim', d: rimPath, fill: 'none' })
+    );
+
+    if (info.lightsOn) {
+      g.append(el('path', { class: 'wall-bounce', d: westFace + northFace }));
+    }
+
+    // Mobilier : posé dans le plus grand rectangle plein de la pièce.
+    const rect = largestRect(cells);
+    for (const piece of furnitureFor(room.icon, rect, (x, y, z) => this.pt(x, y, z))) {
+      g.append(el('path', { class: piece.cls, d: piece.d }));
+    }
+
     const outlineD = borderEdges(cells)
       .map(([[x1, y1], [x2, y2]]) => `M${this.pt(x1, y1)}L${this.pt(x2, y2)}`)
       .join('');
-    const outline = el('path', { class: 'room-outline', d: outlineD, fill: 'none' });
-    if (info.lightsOn) outline.style.setProperty('--lit', `rgb(${info.color.join(',')})`);
-
-    g.append(
-      el('path', { class: 'wall wall--left', d: westPath, fill: 'url(#iso-wall-b)' }),
-      el('path', { class: 'wall wall--right', d: northPath, fill: 'url(#iso-wall-a)' }),
-      el('path', { class: 'wall-rim', d: rimPath, fill: 'none' }),
-      outline
-    );
+    g.append(el('path', { class: 'room-outline', d: outlineD, fill: 'none' }));
 
     return { group: g, tag: this.buildTag(room, info) };
   }
@@ -246,16 +299,16 @@ export class IsoStage {
       transform: `translate(${c.x.toFixed(1)}, ${c.y.toFixed(1)})`
     });
 
-    tag.append(el('rect', { class: 'tag-plate', rx: 12, x: -62, y: -18, width: 124, height: 36 }));
+    tag.append(el('rect', { class: 'tag-plate', rx: 10, x: -56, y: -15, width: 112, height: 30 }));
     tag.insertAdjacentHTML('beforeend',
-      `<g class="tag-icon" transform="translate(-52,-8) scale(0.66)">${iconInner(room.icon || 'grid')}</g>`);
+      `<g class="tag-icon" transform="translate(-46,-7) scale(0.58)">${iconInner(room.icon || 'grid')}</g>`);
 
-    const name = el('text', { class: 'tag-name', x: -32, y: info.meta ? -3 : 4.5 });
+    const name = el('text', { class: 'tag-name', x: -28, y: info.meta ? -3.5 : 4 });
     name.textContent = room.name;
     tag.append(name);
 
     if (info.meta) {
-      const meta = el('text', { class: 'tag-meta', x: -32, y: 9.5 });
+      const meta = el('text', { class: 'tag-meta', x: -28, y: 8 });
       meta.textContent = info.meta;
       tag.append(meta);
     }
@@ -274,13 +327,13 @@ export class IsoStage {
         try { textW = Math.max(textW, t.getBBox().width); } catch { /* non rendu */ }
       }
 
-      const width = Math.max(104, Math.round(34 + textW + 14));
+      const width = Math.max(92, Math.round(30 + textW + 12));
       plate.setAttribute('width', width);
       plate.setAttribute('x', -width / 2);
 
       const left = -width / 2;
-      tag.querySelector('.tag-icon').setAttribute('transform', `translate(${left + 10},-8) scale(0.66)`);
-      for (const t of texts) t.setAttribute('x', left + 32);
+      tag.querySelector('.tag-icon').setAttribute('transform', `translate(${left + 9},-7) scale(0.58)`);
+      for (const t of texts) t.setAttribute('x', left + 28);
     }
   }
 
@@ -492,7 +545,7 @@ export function summarize(room, entities, cells = roomCells(room)) {
   if (onLights.length) parts.push(`${onLights.length} allumée${onLights.length > 1 ? 's' : ''}`);
   else if (lights.length) parts.push(`${lights.length} lumière${lights.length > 1 ? 's' : ''}`);
 
-  const { cell, centroid } = anchorCell(cells);
+  const { cell, centroid } = anchorCell(cells, 1.1);
 
   return {
     entities: list,
