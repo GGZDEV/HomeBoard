@@ -82,7 +82,7 @@ automatiquement à partir des appareils trouvés (les nouveaux appareils apparai
 | **Scènes** | `scene.*` (celles de la pièce, sinon celles sans zone) |
 | **Énergie** | capteurs `power` / `energy` |
 | **Météo** | `weather.*` ; en largeur ≥ 2 ou hauteur ≥ 3, les prévisions des jours suivants ; un toucher ouvre le détail (ressenti, vent, pression, 24 h, 7 jours) |
-| **Calendrier** | `calendar.*` (Google Calendar, Calendrier distant iCal, calendrier local…) : agenda groupé par jour, une couleur par calendrier, détail au toucher ; période réglable (aujourd'hui à 30 jours) |
+| **Calendrier** | `calendar.*` (Google Calendar, Calendrier distant iCal, calendrier local…) : une couleur par calendrier, détail au toucher ; période réglable (aujourd'hui à 30 jours) ; 4 affichages (⚙ › Affichage) : **Compact** (une ligne : heure + titre), **Liste** (horaires, lieu), **Détaillé** (en plus calendrier et début de description), **Semaine** (une colonne par jour, largeur 2 ou plus). Les mêmes réglages existent pour l'Agenda de l'accueil |
 | **Départs train / RER** | prochains départs temps réel IDFM (capteur REST, voir `homeassistant/rer_d_le_mee.yaml`) : minutes restantes, heure, destination, mission, voie, retards et suppressions ; une colonne par direction quand il est large, ou filtré sur une direction |
 | **Spotify / musique** | lecteur `media_player` (Spotify en priorité) : pochette, titre, progression, précédent / lecture / suivant, aléatoire, répétition, volume, choix de l'enceinte (Spotify Connect) et **Playlists** (bibliothèque du lecteur). Sur une ligne : version compacte. Voir *Spotify* plus bas |
 | **Notes** | mémo libre, enregistré automatiquement dans votre compte Home Assistant |

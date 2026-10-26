@@ -337,6 +337,26 @@ button.tile.is-on:hover { filter: brightness(1.06); }
   background: var(--glass-card); transition: background 0.2s ease;
 }
 .cal-ev:hover { background: var(--glass-hover); }
+/* Calendar display modes */
+.cal-ev.is-detail { align-items: flex-start; padding: 10px 12px 10px 10px; }
+.cal-desc { color: rgba(255, 255, 255, 0.7); margin-top: 3px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.35; }
+.cal-list.is-compact { gap: 0; }
+.cal-row { width: 100%; display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 4px 8px; border: none; border-radius: 10px; background: none; color: #fff; font: inherit; text-align: left; }
+.cal-row:hover { background: var(--glass-card); }
+.cal-dot { width: 8px; height: 8px; border-radius: 4px; background: var(--cal); flex: none; }
+.cal-time { flex: none; width: 56px; font-size: 13px; color: var(--fg-muted); font-variant-numeric: tabular-nums; }
+.cal-row-title { min-width: 0; flex: 1; font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-week { display: grid; gap: 6px; min-height: 100%; }
+.cal-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 6px; border-radius: 14px; background: rgba(255, 255, 255, 0.04); }
+.cal-col.is-today { background: rgba(255, 255, 255, 0.10); }
+.cal-col-head { display: flex; align-items: baseline; justify-content: center; gap: 4px; font-size: 12px; color: var(--fg-muted); }
+.cal-col-head b { font-size: 15px; color: #fff; }
+.cal-col.is-today .cal-col-head b { color: var(--accent); }
+.cal-col-body { display: flex; flex-direction: column; gap: 4px; }
+.cal-chip { display: flex; flex-direction: column; gap: 1px; padding: 5px 6px 5px 8px; border: none; border-left: 3px solid var(--cal); border-radius: 6px; background: var(--glass-card); color: #fff; font: inherit; text-align: left; min-width: 0; }
+.cal-chip:hover { background: var(--glass-hover); }
+.cal-chip-time { font-size: 11px; color: var(--fg-muted); font-variant-numeric: tabular-nums; }
+.cal-chip-title { font-size: 12.5px; font-weight: 600; line-height: 1.2; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .cal-bar { width: 4px; align-self: stretch; border-radius: 2px; background: var(--cal); flex: none; }
 .cal-title { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cal-ev .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

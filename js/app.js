@@ -431,7 +431,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     'home-weather': homeType('Météo (accueil)', 'Météo actuelle, 5 prochaines heures, 4 jours, lever et coucher du soleil.', IC.cloud, 1, 4, () => heroWeather()),
     'home-rooms': homeType('Pièces et lumières', 'Chaque pièce avec sa température et ses lampes à allumer d\'un toucher.', IC.home, 2, 3, () => heroRooms()),
     'home-scenes': homeType('Raccourcis', '« Tout éteindre » et vos trois premières scènes.', IC.spark, 2, 1, () => heroScenes()),
-    'home-agenda': homeType('Agenda (accueil)', 'Les 7 prochains jours de vos calendriers, avec les alertes train.', IC.calendar, 1, 2, () => heroAgenda()),
+    'home-agenda': homeType('Agenda (accueil)', 'Les prochains jours de vos calendriers, avec les alertes train ; plusieurs affichages.', IC.calendar, 1, 2, (m) => heroAgenda(m)),
     'home-notes': homeType('Liste de notes', 'Une liste à cocher partagée (courses, rappels…).', IC.note, 1, 2, () => heroNotes())
   });
 
@@ -534,13 +534,16 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     </section>`;
   }
 
-  function heroAgenda() {
+  function heroAgenda(m) {
     const W = HD.Modules;
+    const o = (m && m.options) || {};
+    const days = Number(o.days) || 7;
+    const id = m ? m.id : 'hero-agenda';
     const cals = allStates().filter((s) => M.domainOf(s.entity_id) === 'calendar');
-    const data = cals.length ? calendarFor(cals, 7) : { raw: {} };
+    const data = cals.length ? calendarFor(cals, days) : { raw: {} };
     const events = W.calEvents(cals, data.raw).filter((ev) => ev.end > new Date());
     app.calEvents = app.calEvents || {};
-    app.calEvents['hero-agenda'] = events;
+    app.calEvents[id] = events;
     // Real-time train alert (cancellations / delays in the next hour), from the IDFM sensor.
     const tr = allStates().find((s) => M.domainOf(s.entity_id) === 'sensor' && s.attributes.MonitoredStopVisit);
     let alert = '';
@@ -555,22 +558,13 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
           <span class="stack"><span class="cal-title">${esc(line.mode + ' ' + line.name)} · ${esc(M.shortName(tr))} : ${esc(what)}</span><span class="muted small">Dans l'heure qui vient</span></span></div>`;
       }
     }
-    let list = '';
-    let lastDay = null;
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    if (alert) { list += `<h3 class="cal-day">Aujourd'hui</h3>${alert}`; lastDay = today.getTime(); }
-    events.forEach((ev, i) => {
-      const d = ev.start < today ? new Date(today) : new Date(ev.start.getFullYear(), ev.start.getMonth(), ev.start.getDate());
-      if (d.getTime() !== lastDay) { list += `<h3 class="cal-day">${esc(W.dayTitle(d))}</h3>`; lastDay = d.getTime(); }
-      list += `<button class="agenda-ev" data-act="event-open" data-arg="hero-agenda|${i}" data-key="hero:ev${i}"><span class="cal-bar" style="background: ${ev.color}"></span>
-        <span class="stack"><span class="cal-title">${esc(ev.title)}</span><span class="muted small">${esc(W.whenLabel(ev))}${ev.location ? ' · ' + esc(ev.location) : ''}</span></span></button>`;
-    });
+    let list = alert + W.calBody(events, { id, view: o.view, days, multi: cals.length > 1, narrow: !m || m.w === 1 });
     if (!events.length && !alert) {
-      list = `<p class="muted small">${!cals.length ? 'Aucun calendrier : connectez Google Agenda dans Home Assistant (« Calendrier distant » ou « Google Calendar »).' : data.loading ? 'Chargement…' : 'Rien de prévu sur 7 jours.'}</p>`;
+      list = `<p class="muted small">${!cals.length ? 'Aucun calendrier : connectez Google Agenda dans Home Assistant (« Calendrier distant » ou « Google Calendar »).' : data.loading ? 'Chargement…' : days === 1 ? "Rien de prévu aujourd'hui." : 'Rien de prévu sur ' + days + ' jours.'}</p>`;
     }
     return `<section class="card hero-card hero-agenda" aria-label="Agenda">
-      <div class="mod-head"><h2>Agenda</h2><span class="muted small">7 jours</span></div>
-      <div class="agenda-list" data-scroll="hero-agenda">${list}</div>
+      <div class="mod-head"><h2>Agenda</h2><span class="muted small">${days === 1 ? "Aujourd'hui" : days + ' jours'}</span></div>
+      <div class="agenda-list" data-scroll="agenda:${esc(id)}">${list}</div>
     </section>`;
   }
 
@@ -913,7 +907,9 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
           return `<div class="field-row"><span class="field-label">Direction</span>${seg('draft-dir', d.options.direction || '', [['', 'Toutes']].concat(dirs.map((x) => [x, esc(x)])))}</div>
             <p class="muted small">« Toutes » : en largeur 2 ou plus, une colonne par direction.</p>`;
         })() : ''}
-        ${d.type === 'calendar' ? `<div class="field-row"><span class="field-label">Période</span>${seg('draft-days', String(d.options.days || 7), [['1', "Aujourd'hui"], ['3', '3 j'], ['7', '7 j'], ['14', '14 j'], ['30', '30 j']])}</div>` : ''}
+        ${d.type === 'calendar' || d.type === 'home-agenda' ? `<div class="field-row"><span class="field-label">Affichage</span>${seg('draft-view', d.options.view || 'list', HD.Modules.CAL_VIEWS)}</div>
+          <p class="muted small">Compact : une ligne par événement (heure + titre). Liste : horaires et lieu. Détaillé : en plus le calendrier et le début de la description. Semaine : une colonne par jour (largeur 2 ou plus, 7 jours au maximum).</p>
+          <div class="field-row"><span class="field-label">Période</span>${seg('draft-days', String(d.options.days || 7), [['1', "Aujourd'hui"], ['3', '3 j'], ['7', '7 j'], ['14', '14 j'], ['30', '30 j']])}</div>` : ''}
         ${colors}
         ${tempColors}
         ${picker}`;
@@ -1284,6 +1280,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       showToast('Lecture : ' + c.title);
       render();
     },
+    'draft-view'(arg) { app.modal.draft.options.view = arg; render(); },
     'draft-days'(arg) { app.modal.draft.options.days = Number(arg); render(); },
     'draft-dir'(arg) {
       if (arg) app.modal.draft.options.direction = arg;

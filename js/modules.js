@@ -378,6 +378,53 @@ window.HD = window.HD || {};
     return hm(ev.start) + ' – ' + (sameDay ? hm(ev.end) : shortDate(ev.end) + ' ' + hm(ev.end));
   }
 
+  // Display modes (option "view"), from the densest to the most detailed. "Semaine" needs width 2+.
+  const CAL_VIEWS = [['compact', 'Compact'], ['list', 'Liste'], ['detail', 'Détaillé'], ['week', 'Semaine']];
+  const cleanDesc = (s) => String(s || '').replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 220);
+  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+  // Event list for a calendar module / the home agenda. o: { id, view, days, multi (several calendars), narrow (width 1) }
+  function calBody(events, o) {
+    let view = o.view || 'list';
+    if (view === 'week' && o.narrow) view = 'compact';
+    const today = startOfDay(new Date());
+    const open = (i) => `data-act="event-open" data-arg="${esc(o.id)}|${i}" data-key="${esc(o.id)}:ev${i}"`;
+    if (view === 'week') {
+      // One column per day; events spanning several days show in each.
+      const n = Math.min(7, Math.max(1, o.days || 7));
+      const cols = Array.from({ length: n }, (_, k) => {
+        const d0 = new Date(today); d0.setDate(d0.getDate() + k);
+        const d1 = new Date(d0); d1.setDate(d1.getDate() + 1);
+        const evs = events.map((ev, i) => [ev, i]).filter(([ev]) => ev.start < d1 && ev.end > d0);
+        const label = k === 0 ? 'Auj.' : cap(d0.toLocaleDateString('fr-FR', { weekday: 'short' }));
+        return `<div class="cal-col${k === 0 ? ' is-today' : ''}"><div class="cal-col-head"><span>${esc(label)}</span><b>${d0.getDate()}</b></div>
+          <div class="cal-col-body">${evs.map(([ev, i]) => `<button class="cal-chip" ${open(i)} style="--cal: ${ev.color}">
+            <span class="cal-chip-time">${ev.allDay || ev.start < d0 ? 'Journée' : hm(ev.start)}</span><span class="cal-chip-title">${esc(ev.title)}</span></button>`).join('')}</div></div>`;
+      });
+      return `<div class="cal-week" style="grid-template-columns: repeat(${n}, minmax(0, 1fr))">${cols.join('')}</div>`;
+    }
+    let html = '', last = null;
+    events.forEach((ev, i) => {
+      const day = ev.start < today ? today : startOfDay(ev.start);
+      if (last !== day.getTime()) {
+        html += `${last != null ? '</ul>' : ''}<h3 class="cal-day">${esc(dayTitle(day))}</h3><ul class="cal-list${view === 'compact' ? ' is-compact' : ''}">`;
+        last = day.getTime();
+      }
+      if (view === 'compact') {
+        // One line: time, title.
+        const time = ev.allDay ? 'Journée' : ev.start < today ? 'En cours' : hm(ev.start);
+        html += `<li><button class="cal-row" ${open(i)} style="--cal: ${ev.color}"><span class="cal-dot"></span><span class="cal-time">${time}</span><span class="cal-row-title">${esc(ev.title)}</span></button></li>`;
+      } else {
+        const detail = view === 'detail';
+        const sub = [whenLabel(ev), ev.location, o.multi && (detail || o.narrow) ? ev.calName : ''].filter(Boolean).map(esc).join(' · ');
+        const desc = detail ? cleanDesc(ev.description) : '';
+        html += `<li><button class="cal-ev${detail ? ' is-detail' : ''}" ${open(i)} style="--cal: ${ev.color}"><span class="cal-bar" aria-hidden="true"></span>
+          <span class="stack grow"><span class="cal-title">${esc(ev.title)}</span><span class="muted small">${sub}</span>${desc ? `<span class="cal-desc small">${esc(desc)}</span>` : ''}</span></button></li>`;
+      }
+    });
+    return html + (last != null ? '</ul>' : '');
+  }
+
   function calendar(m, list, c) {
     const days = Number(m.options && m.options.days) || 7;
     const data = c.calendar(list, days);
@@ -397,18 +444,9 @@ window.HD = window.HD || {};
     </button></li>`;
     // Small box: only the next event.
     if (m.h === 1) return head(title, dayTitle(events[0].start < new Date() ? new Date() : events[0].start)) + `<ul class="cal-list">${item(events[0], 0)}</ul>`;
-    // Agenda grouped by day (ongoing events count for today).
-    const today = startOfDay(new Date());
-    let html = '', lastDay = null;
-    events.forEach((ev, idx) => {
-      const day = ev.start < today ? today : startOfDay(ev.start);
-      if (!lastDay || day.getTime() !== lastDay.getTime()) {
-        html += `${lastDay ? '</ul>' : ''}<h3 class="cal-day">${esc(dayTitle(day))}</h3><ul class="cal-list">`;
-        lastDay = day;
-      }
-      html += item(ev, idx);
-    });
-    return head(title, legend) + `<div class="cal-scroll" data-scroll="${m.id}">${html}</ul></div>`;
+    // Agenda grouped by day (ongoing events count for today), in the chosen display mode.
+    const body = calBody(events, { id: m.id, view: m.options.view, days, multi: list.length > 1, narrow: m.w === 1 });
+    return head(title, legend) + `<div class="cal-scroll" data-scroll="${m.id}">${body}</div>`;
   }
 
   // ---------- Next departures (Île-de-France Mobilités, SIRI Lite via a HA REST sensor) ----------
@@ -632,5 +670,5 @@ window.HD = window.HD || {};
     return svg(`<path stroke="#FFFFFF" d="${wxIcon(cond)}"></path>`);
   }
 
-  HD.Modules = { types: T, lightState, TONES, ACCENTS, ZONES, tempThresholds, tempZone, tempColorsOn, wxIcon, wxArt, dayLabel, dailyItems, whenLabel, dayTitle, transitDirections, calEvents, departures, LINES, mediaPos, mmss, isSpotify };
+  HD.Modules = { types: T, lightState, TONES, ACCENTS, ZONES, tempThresholds, tempZone, tempColorsOn, wxIcon, wxArt, dayLabel, dailyItems, whenLabel, dayTitle, transitDirections, calEvents, calBody, CAL_VIEWS, departures, LINES, mediaPos, mmss, isSpotify };
 })();
