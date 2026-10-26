@@ -2,6 +2,17 @@
 // Same interface as HD.HAConnection, so the rest of the app can't tell the difference.
 window.HD = window.HD || {};
 
+// Fake music for the demo player: gradient squares as cover art.
+const demoCover = (a, b) => 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><defs><linearGradient id="g" x2="1" y2="1"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient></defs><rect width="10" height="10" fill="url(#g)"/></svg>`);
+const DEMO_TRACKS = [
+  { media_title: "Lumière d'automne", media_artist: 'Les Ondes', media_album_name: 'Saisons', media_duration: 243, entity_picture: demoCover('#F5C542', '#C2410C') },
+  { media_title: 'Rue des Lilas', media_artist: 'Nina Paradis', media_album_name: 'Faubourgs', media_duration: 198, entity_picture: demoCover('#64D2FF', '#5E5CE6') },
+  { media_title: 'Café du matin', media_artist: 'Trio Velours', media_album_name: 'Dimanche', media_duration: 276, entity_picture: demoCover('#30D158', '#0F766E') }
+];
+const DEMO_PLAYLISTS = [
+  ['Dimanche matin', '#F5C542', '#C2410C'], ['Cuisine du soir', '#FF375F', '#7C3AED'], ['Concentration', '#64D2FF', '#1E3A8A'], ['Fête', '#BF5AF2', '#FF9F0A']
+].map(([title, a, b], i) => ({ title, media_content_id: 'spotify:playlist:demo' + i, media_content_type: 'playlist', can_play: true, can_expand: true, thumbnail: demoCover(a, b) }));
+
 HD.DemoConnection = class DemoConnection {
   constructor() {
     this.listeners = { state: [], status: [], ready: [] };
@@ -34,6 +45,11 @@ HD.DemoConnection = class DemoConnection {
       S('light.salon_plafonnier', 'on', { friendly_name: 'Salon Plafonnier', brightness: 204, color_temp_kelvin: 2700, ...ct }, 'salon'),
       S('media_player.salon_tv', 'on', { friendly_name: 'Téléviseur', source: 'HDMI 1' }, 'salon'),
       S('media_player.salon_enceinte', 'playing', { friendly_name: 'Enceinte', media_title: 'Lecture' }, 'salon'),
+      S('media_player.spotify_maison', 'playing', {
+        friendly_name: 'Spotify Maison', app_name: 'Spotify', source: 'Enceinte salon', source_list: ['Enceinte salon', 'Téléviseur', 'PC bureau'],
+        ...DEMO_TRACKS[0], media_position: 61, media_position_updated_at: new Date(now).toISOString(),
+        volume_level: 0.45, shuffle: false, repeat: 'off', media_playlist: 'Dimanche matin'
+      }),
       S('climate.salon', 'auto', { friendly_name: 'Climatisation', ...clim(22, 21.4, 46) }, 'salon'),
       S('cover.salon_stores', 'open', { friendly_name: 'Stores', current_position: 60 }, 'salon'),
       S('fan.salon_purificateur', 'off', { friendly_name: 'Purificateur', percentage: 0 }, 'salon'),
@@ -172,8 +188,40 @@ HD.DemoConnection = class DemoConnection {
       else if (service === 'unlock') this.set(id, 'unlocked');
       else if (service === 'set_temperature') this.set(id, null, { temperature: data.temperature });
       else if (service === 'set_hvac_mode') this.set(id, data.hvac_mode);
+      else if (d === 'media_player' && service !== 'toggle') this.media(id, st, service, data);
       else if (service === 'trigger') this.set(id, null, { last_triggered: new Date().toISOString() });
     }
+  }
+
+  // Spotify-like player: tracks loop through a small fake playlist.
+  media(id, st, service, data) {
+    const a = st.attributes;
+    const at = new Date().toISOString();
+    const pos = st.state === 'playing' ? (a.media_position || 0) + (Date.now() - Date.parse(a.media_position_updated_at)) / 1000 : a.media_position || 0;
+    const track = (step) => {
+      const i = (DEMO_TRACKS.findIndex((t) => t.media_title === a.media_title) + step + DEMO_TRACKS.length) % DEMO_TRACKS.length;
+      this.set(id, 'playing', { ...DEMO_TRACKS[i], media_position: 0, media_position_updated_at: at });
+    };
+    if (service === 'media_play_pause') this.set(id, st.state === 'playing' ? 'paused' : 'playing', { media_position: pos, media_position_updated_at: at });
+    else if (service === 'media_next_track') track(1);
+    else if (service === 'media_previous_track') track(-1);
+    else if (service === 'volume_set') this.set(id, null, { volume_level: data.volume_level });
+    else if (service === 'shuffle_set') this.set(id, null, { shuffle: data.shuffle });
+    else if (service === 'repeat_set') this.set(id, null, { repeat: data.repeat });
+    else if (service === 'select_source') this.set(id, null, { source: data.source });
+    else if (service === 'play_media') {
+      const pl = DEMO_PLAYLISTS.find((p) => p.media_content_id === data.media_content_id);
+      this.set(id, 'playing', { ...DEMO_TRACKS[0], media_position: 0, media_position_updated_at: at, media_playlist: pl ? pl.title : '' });
+    }
+  }
+
+  browseMedia(entityId, id) {
+    const folder = (title, cid) => ({ title, media_content_id: cid, media_content_type: cid, can_expand: true, can_play: false });
+    const node = !id
+      ? { title: 'Spotify', children: [folder('Playlists', 'current_user_playlists'), folder('Titres likés', 'current_user_saved_tracks')] }
+      : id === 'current_user_playlists' ? { title: 'Playlists', children: DEMO_PLAYLISTS }
+      : { title: 'Titres likés', children: DEMO_TRACKS.map((t, i) => ({ title: t.media_title + ' · ' + t.media_artist, media_content_id: 'spotify:track:demo' + i, media_content_type: 'track', can_play: true, can_expand: false, thumbnail: t.entity_picture })) };
+    return new Promise((resolve) => setTimeout(() => resolve(JSON.parse(JSON.stringify(node))), 150));
   }
 
   // A family calendar and a work calendar over the next days.

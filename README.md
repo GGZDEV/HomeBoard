@@ -84,6 +84,7 @@ automatiquement à partir des appareils trouvés (les nouveaux appareils apparai
 | **Météo** | `weather.*` ; en largeur ≥ 2 ou hauteur ≥ 3, les prévisions des jours suivants ; un toucher ouvre le détail (ressenti, vent, pression, 24 h, 7 jours) |
 | **Calendrier** | `calendar.*` (Google Calendar, Calendrier distant iCal, calendrier local…) : agenda groupé par jour, une couleur par calendrier, détail au toucher ; période réglable (aujourd'hui à 30 jours) |
 | **Départs train / RER** | prochains départs temps réel IDFM (capteur REST, voir `homeassistant/rer_d_le_mee.yaml`) : minutes restantes, heure, destination, mission, voie, retards et suppressions ; une colonne par direction quand il est large, ou filtré sur une direction |
+| **Spotify / musique** | lecteur `media_player` (Spotify en priorité) : pochette, titre, progression, précédent / lecture / suivant, aléatoire, répétition, volume, choix de l'enceinte (Spotify Connect) et **Playlists** (bibliothèque du lecteur). Sur une ligne : version compacte. Voir *Spotify* plus bas |
 | **Notes** | mémo libre, enregistré automatiquement dans votre compte Home Assistant |
 | **Automatisations** | activer/désactiver `automation.*`, lancer `script.*` |
 | **Pièces** | résumé de chaque pièce, un clic ouvre la pièce |
@@ -117,6 +118,20 @@ HA ne sert pas d'index de dossier).
 main : laissez `?v=dev` dans les sources, `deploy.sh` le remplace par l'empreinte du contenu et
 publie `version.json`. Au chargement, `index.html` lit `version.json` sans cache et, si une version
 plus récente existe, se recharge en `index.html?v=<version>`.
+
+## Spotify
+
+Le module passe par l'intégration Spotify de Home Assistant (le tableau de bord ne se connecte
+pas directement à Spotify : Spotify exige une adresse HTTPS pour se connecter).
+1. developer.spotify.com › Dashboard › *Create app* ; Redirect URI :
+   `https://my.home-assistant.io/redirect/oauth` ; API : *Web API*.
+2. Home Assistant › Paramètres › Appareils et services › Ajouter une intégration › **Spotify** :
+   collez le *Client ID* et le *Client secret*, puis connectez votre compte (Premium requis pour
+   piloter la lecture).
+3. Une entité `media_player.spotify_…` apparaît : crayon › « + Module » › **Spotify / musique**.
+
+Les enceintes proposées sont vos appareils Spotify Connect ; si aucune n'est active, ouvrez
+Spotify une fois sur l'appareil voulu.
 
 ## Fichiers
 - `js/ha.js` — client WebSocket (auth, registres, `state_changed`, `call_service`, reconnexion)

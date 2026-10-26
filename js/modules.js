@@ -526,6 +526,71 @@ window.HD = window.HD || {};
     return head(m.title || 'Automatisations') + `<ul class="auto-list" data-scroll="${m.id}">${items}</ul>`;
   }
 
+  // ---------- Music (Spotify through Home Assistant, or any media player) ----------
+  const isSpotify = (s) => /spotify/.test(s.entity_id) || /spotify/i.test(String(s.attributes.app_name || ''));
+  const mmss = (sec) => { sec = Math.max(0, Math.floor(sec)); return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0'); };
+  // Current position in seconds: HA only sends it on changes, so extrapolate while playing.
+  function mediaPos(st, now) {
+    const a = st.attributes;
+    let pos = Number(a.media_position) || 0;
+    if (st.state === 'playing' && a.media_position_updated_at) pos += ((now || Date.now()) - Date.parse(a.media_position_updated_at)) / 1000;
+    const dur = Number(a.media_duration) || 0;
+    return dur ? Math.min(pos, dur) : pos;
+  }
+
+  function media(m, list, c) {
+    const st = list[0];
+    const a = st.attributes;
+    const playing = st.state === 'playing';
+    const active = playing || st.state === 'paused';
+    const off = M.UNAVAILABLE.includes(st.state);
+    const spotify = isSpotify(st);
+    const title = m.title || (spotify ? 'Spotify' : M.shortName(st, c.roomName));
+    const art = active && a.entity_picture ? c.mediaUrl(a.entity_picture) : '';
+    const dur = Number(a.media_duration) || 0;
+    const pos = mediaPos(st);
+    const srcs = Array.isArray(a.source_list) ? a.source_list : [];
+    const k = (s) => `${m.id}:${s}`;
+    const btn = (cmd, ic, label, extra = '') => `<button class="media-btn${extra}" data-act="media-cmd" data-arg="${cmd}" data-key="${k(cmd)}" aria-label="${label}" title="${label}" ${off ? 'disabled' : ''}>${icon(ic, cmd === 'play_pause' ? 26 : 20, 2)}</button>`;
+    const repeat = a.repeat || 'off';
+    const device = srcs.length
+      ? `<label class="media-src"><span class="sr-only">Appareil de lecture</span>${icon(IC.speaker, 15, 2)}
+          <select data-act="media-source" data-key="${k('src')}" ${off ? 'disabled' : ''}>
+            ${a.source ? '' : '<option value="">Choisir un appareil…</option>'}
+            ${srcs.map((s) => `<option value="${esc(s)}"${s === a.source ? ' selected' : ''}>${esc(s)}</option>`).join('')}
+          </select></label>`
+      : a.source ? `<span class="muted small">${esc(a.source)}</span>` : '';
+    const what = off ? 'Indisponible' : active ? (a.media_title || 'Lecture en cours')
+      : srcs.length && !a.source ? 'Choisissez un appareil' : 'Rien en lecture';
+    const who = active ? [a.media_artist, a.media_album_name].filter(Boolean).join(' · ') : (spotify ? 'Lancez une playlist ou reprenez la lecture' : '');
+    const compact = m.h === 1;
+    const controls = `<div class="media-ctrls">
+        ${compact ? '' : btn('shuffle', IC.shuffle, a.shuffle ? 'Lecture aléatoire activée' : 'Lecture aléatoire', a.shuffle ? ' is-on' : '')}
+        ${btn('prev', IC.prev, 'Précédent')}
+        ${btn('play_pause', playing ? IC.pause : IC.play, playing ? 'Pause' : 'Lecture', ' is-main')}
+        ${btn('next', IC.next, 'Suivant')}
+        ${compact ? '' : btn('repeat', IC.repeat, repeat === 'one' ? 'Répéter le titre' : repeat === 'all' ? 'Répéter tout' : 'Répéter', repeat !== 'off' ? ' is-on' + (repeat === 'one' ? ' is-one' : '') : '')}
+      </div>`;
+    const vol = a.volume_level != null ? Math.round(Number(a.volume_level) * 100) : null;
+    return `
+    <div class="mod-head"><h2>${spotify ? `<span class="spotify-dot"></span>` : ''}${esc(title)}</h2>${device}</div>
+    <div class="media-now">
+      <div class="media-art">${art ? `<img src="${esc(art)}" alt="" loading="lazy">` : icon(IC.music, 30, 1.8)}</div>
+      <div class="stack media-text"><span class="media-title">${esc(what)}</span>${who ? `<span class="muted small media-who">${esc(who)}</span>` : ''}</div>
+      ${compact ? controls : ''}
+    </div>
+    ${compact ? '' : `
+    ${dur ? `<div class="media-progress" data-media-pos data-pos="${pos}" data-at="${Date.now()}" data-dur="${dur}" data-playing="${playing ? 1 : 0}">
+      <span class="mp-bar"><i style="width: ${Math.min(100, (pos / dur) * 100).toFixed(2)}%"></i></span>
+      <span class="mp-times muted small"><span data-cur>${mmss(pos)}</span><span>${mmss(dur)}</span></span></div>` : ''}
+    ${controls}
+    <div class="media-foot">
+      ${vol != null ? `<label class="slider media-vol">${icon(IC.volume, 16, 2)}<span class="slider-fill" data-vol-fill style="width: ${vol}%"></span>
+        <input class="range" type="range" min="0" max="100" value="${vol}" data-act="media-vol" data-key="${k('vol')}" aria-label="Volume" ${off ? 'disabled' : ''}></label>` : '<span class="grow"></span>'}
+      <button class="btn-glass sm" data-act="media-browse" data-arg="${esc(st.entity_id)}" data-key="${k('browse')}" ${off ? 'disabled' : ''}>${icon(IC.list, 16, 2)} ${spotify ? 'Playlists' : 'Bibliothèque'}</button>
+    </div>`}`;
+  }
+
   // ---------- catalog ----------
   // auto: entities picked automatically within the scope; pick: what the picker offers.
   const T = {
@@ -552,6 +617,9 @@ window.HD = window.HD || {};
     notes: { name: 'Notes', desc: 'Un mémo libre : liste de courses, rappels, code wifi invités… Enregistré dans votre compte.', icon: IC.note, w: 1, h: 2, noEntities: true, render: notes },
     automations: { name: 'Automatisations', desc: 'Activer/désactiver les automatisations, lancer les scripts.', icon: IC.robot, w: 2, h: 4,
       pick: (s) => ['automation', 'script'].includes(M.domainOf(s.entity_id)), render: automations },
+    media: { name: 'Spotify / musique', desc: 'Pochette, titre, commandes, volume, choix de l\'enceinte et playlists (Spotify via Home Assistant).', icon: IC.music, w: 2, h: 2, single: true,
+      empty: 'Aucun lecteur multimédia. Ajoutez Spotify dans Home Assistant : Paramètres › Appareils et services › Ajouter une intégration › Spotify (compte Premium nécessaire pour piloter la lecture).',
+      auto: isSpotify, pick: dom('media_player'), render: media },
     rooms: { name: 'Pièces', desc: 'Résumé de chaque pièce ; un clic ouvre la pièce.', icon: IC.home, w: 4, h: 2, noEntities: true, render: rooms }
   };
 
@@ -564,5 +632,5 @@ window.HD = window.HD || {};
     return svg(`<path stroke="#FFFFFF" d="${wxIcon(cond)}"></path>`);
   }
 
-  HD.Modules = { types: T, lightState, TONES, ACCENTS, ZONES, tempThresholds, tempZone, tempColorsOn, wxIcon, wxArt, dayLabel, dailyItems, whenLabel, dayTitle, transitDirections, calEvents, departures, LINES };
+  HD.Modules = { types: T, lightState, TONES, ACCENTS, ZONES, tempThresholds, tempZone, tempColorsOn, wxIcon, wxArt, dayLabel, dailyItems, whenLabel, dayTitle, transitDirections, calEvents, departures, LINES, mediaPos, mmss, isSpotify };
 })();

@@ -60,5 +60,13 @@ HD.IC = {
   wind: 'M3 9h11a3 3 0 1 0-3-3 M3 14h15a3 3 0 1 1-3 3 M3 19h7',
   expand:'M4 9V4h5 M20 9V4h-5 M4 15v5h5 M20 15v5h-5',
   shrink: 'M9 4v5H4 M15 4v5h5 M9 20v-5H4 M15 20v-5h5',
+  prev: 'M19 20L9 12l10-8z M5 19V5',
+  next: 'M5 4l10 8-10 8z M19 5v14',
+  pause: 'M7 4h3v16H7z M14 4h3v16h-3z',
+  shuffle: 'M16 3h5v5 M4 20L21 3 M21 16v5h-5 M15 15l6 6 M4 4l5 5',
+  repeat: 'M17 1l4 4-4 4 M3 11V9a4 4 0 0 1 4-4h14 M7 23l-4-4 4-4 M21 13v2a4 4 0 0 1-4 4H3',
+  volume: 'M11 5L6 9H2v6h4l5 4z M15.5 8.5a5 5 0 0 1 0 7 M19 5a10 10 0 0 1 0 14',
+  music: 'M9 18V5l12-2v13 M6 15a3 3 0 1 0 0 6 3 3 0 1 0 0-6z M18 13a3 3 0 1 0 0 6 3 3 0 1 0 0-6z',
+  list: 'M8 6h13 M8 12h13 M8 18h13 M3 6h.01 M3 12h.01 M3 18h.01',
   drag:'M9 6h.01 M15 6h.01 M9 12h.01 M15 12h.01 M9 18h.01 M15 18h.01'
 };

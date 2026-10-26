@@ -276,7 +276,11 @@
     const cs = getComputedStyle(mods);
     const gap = parseFloat(cs.rowGap) || 16;
     const inner = mods.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
-    mods.style.setProperty('--row', Math.max(72, Math.floor((inner - 3 * gap) / 4)) + 'px');
+    const fit = (space) => mods.style.setProperty('--row', Math.max(72, Math.floor((space - 3 * gap) / 4)) + 'px');
+    fit(inner);
+    // More modules below: shorten the rows a little so the first screen's cards end cleanly above
+    // the bottom fade, and the top of the next row peeks out to show the page scrolls.
+    if (mods.scrollHeight > mods.clientHeight + 4) fit(inner - 40);
   }
   window.addEventListener('resize', () => { fitRows(); updateFades(); });
 
@@ -629,7 +633,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     const ctx = {
       states: app.states, index: app.index, global: !room, roomName: room ? room.name : null,
       targetTemp, roomSummaries, roomOrder, forecast: (st) => forecastFor(st, 'main'),
-      calendar: calendarFor,
+      calendar: calendarFor, mediaUrl,
       rememberEvents: (id, events) => { app.calEvents = app.calEvents || {}; app.calEvents[id] = events; }
     };
     const body = mods.map((m) => moduleView(m, ctx, e)).join('') +
@@ -739,11 +743,58 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
   }
 
   // ----- modals -----
+  // Pictures from HA (cover art, library thumbnails) are relative to the server; Spotify's are absolute.
+  function mediaUrl(u) {
+    if (!u || /^(https?:|data:)/.test(u) || !app.conn || isDemo()) return u || '';
+    return app.conn.baseUrl.replace(/\/$/, '') + u;
+  }
+
+  // Media library (Spotify: playlists, albums…): folders open, playable items start on the player.
+  async function mediaBrowse(entity, item) {
+    const md = app.modal = { kind: 'media', entity, stack: (app.modal && app.modal.kind === 'media' ? app.modal.stack : []), node: null, loading: true };
+    render();
+    try {
+      const node = await app.conn.browseMedia(entity, item && item.media_content_id, item && item.media_content_type);
+      if (app.modal !== md) return;
+      md.node = node; md.loading = false;
+      if (item) md.stack = md.stack.concat([item]);
+    } catch (e) {
+      if (app.modal !== md) return;
+      md.loading = false; md.error = e.message;
+    }
+    render();
+  }
+
+  function mediaModal(md) {
+    const st = app.states.get(md.entity);
+    const node = md.node;
+    const kids = node && Array.isArray(node.children) ? node.children : [];
+    md.items = kids;
+    let body;
+    if (md.loading) body = '<p class="muted">Chargement…</p>';
+    else if (md.error) body = `<p class="muted">Bibliothèque indisponible : ${esc(md.error)}</p>`;
+    else if (!kids.length) body = '<p class="muted">Rien ici.</p>';
+    else {
+      body = `<div class="media-lib">${kids.map((c, i) => {
+        const thumb = c.thumbnail ? `<img src="${esc(mediaUrl(c.thumbnail))}" alt="" loading="lazy">` : icon(c.can_expand && !c.can_play ? IC.list : IC.music, 26, 1.8);
+        const act = c.can_play ? 'media-play' : c.can_expand ? 'media-open' : '';
+        return `<button class="media-item hov" ${act ? `data-act="${act}" data-arg="${i}"` : 'disabled'} data-key="media-lib:${i}">
+          <span class="media-thumb">${thumb}</span><span class="media-item-name">${esc(c.title)}</span></button>`;
+      }).join('')}</div>`;
+    }
+    const where = st && st.attributes.source ? 'Lecture sur ' + st.attributes.source : '';
+    const foot = `${md.stack.length ? `<button class="btn-glass" data-act="media-back" data-key="media-back">${icon(IC.left, 16, 2.2)} Retour</button>` : ''}
+      <span class="muted small grow">${esc(where)}</span>
+      <button class="btn-solid" data-act="modal-close" data-key="modal-close">Fermer</button>`;
+    return modalFrame((node && md.stack.length ? node.title : null) || (st && HD.Modules.isSpotify(st) ? 'Spotify' : 'Bibliothèque'), body, foot);
+  }
+
   function modalView() {
     const md = app.modal;
     let title, body, foot;
     if (md.kind === 'weather') return weatherModal(md.entity);
     if (md.kind === 'event') return eventModal(md.ev);
+    if (md.kind === 'media') return mediaModal(md);
     if (md.kind === 'add') {
       const e = env(pageRoom());
       const scope = pageRoom() ? 'room' : 'all';
@@ -1188,6 +1239,39 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       const ev = app.calEvents && app.calEvents[mod] && app.calEvents[mod][Number(idx)];
       if (ev) { app.modal = { kind: 'event', ev }; render(); }
     },
+    'media-cmd'(arg, el) {
+      const x = moduleOf(el);
+      const st = x && x.list[0];
+      if (!st) return;
+      const id = st.entity_id;
+      if (arg === 'play_pause') call('media_player', 'media_play_pause', id);
+      else if (arg === 'prev') call('media_player', 'media_previous_track', id);
+      else if (arg === 'next') call('media_player', 'media_next_track', id);
+      else if (arg === 'shuffle') call('media_player', 'shuffle_set', id, { shuffle: !st.attributes.shuffle });
+      else if (arg === 'repeat') {
+        const order = ['off', 'all', 'one'];
+        call('media_player', 'repeat_set', id, { repeat: order[(order.indexOf(st.attributes.repeat || 'off') + 1) % 3] });
+      }
+    },
+    'media-browse'(arg) { app.modal = null; mediaBrowse(arg, null); },
+    'media-open'(arg) { const md = app.modal; if (md && md.items) mediaBrowse(md.entity, md.items[Number(arg)]); },
+    'media-back'() {
+      const md = app.modal;
+      if (!md || !md.stack.length) return;
+      const stack = md.stack.slice(0, -1);
+      const parent = stack[stack.length - 1] || null;
+      md.stack = stack.slice(0, -1);
+      mediaBrowse(md.entity, parent);
+    },
+    'media-play'(arg) {
+      const md = app.modal;
+      const c = md && md.items && md.items[Number(arg)];
+      if (!c) return;
+      call('media_player', 'play_media', md.entity, { media_content_id: c.media_content_id, media_content_type: c.media_content_type });
+      app.modal = null;
+      showToast('Lecture : ' + c.title);
+      render();
+    },
     'draft-days'(arg) { app.modal.draft.options.days = Number(arg); render(); },
     'draft-dir'(arg) {
       if (arg) app.modal.draft.options.direction = arg;
@@ -1303,6 +1387,10 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       const num = host.querySelector('[data-bri-num]');
       if (fill) fill.style.width = e.target.value + '%';
       if (num) num.textContent = e.target.value + ' %';
+    } else if (act === 'media-vol') {
+      app.dragging = true;
+      const fill = e.target.closest('[data-mod]').querySelector('[data-vol-fill]');
+      if (fill) fill.style.width = e.target.value + '%';
     } else if (act === 'memo-draft') {
       app.memoDraft = e.target.value;
     } else if (act === 'note') {
@@ -1341,6 +1429,14 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
         else call('light', 'turn_on', ids, { brightness_pct: pct });
       }
       if (app.renderAfterDrag) { app.renderAfterDrag = false; queueRender(); }
+    } else if (act === 'media-vol') {
+      app.dragging = false;
+      const x = moduleOf(t);
+      if (x && x.list[0]) call('media_player', 'volume_set', x.list[0].entity_id, { volume_level: Number(t.value) / 100 });
+      if (app.renderAfterDrag) { app.renderAfterDrag = false; queueRender(); }
+    } else if (act === 'media-source') {
+      const x = moduleOf(t);
+      if (x && x.list[0] && t.value) call('media_player', 'select_source', x.list[0].entity_id, { source: t.value });
     } else if (act === 'memo-check') {
       const items = memoItems();
       const it = items[Number(t.dataset.arg)];
@@ -1581,6 +1677,19 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     if (e.key === 'Escape' && gesture) { endGesture(false); return; }
     if (e.key === 'Escape' && app.modal) { app.modal = null; render(); }
   });
+
+  // Music: move the progress bars every second without redrawing the page.
+  setInterval(() => {
+    $app.querySelectorAll('[data-media-pos]').forEach((el) => {
+      if (el.dataset.playing !== '1') return;
+      const dur = Number(el.dataset.dur);
+      const pos = Math.min(dur, Number(el.dataset.pos) + (Date.now() - Number(el.dataset.at)) / 1000);
+      const bar = el.querySelector('i');
+      if (bar) bar.style.width = (pos / dur * 100).toFixed(2) + '%';
+      const cur = el.querySelector('[data-cur]');
+      if (cur) cur.textContent = HD.Modules.mmss(pos);
+    });
+  }, 1000);
 
   // Refresh relative times and the header clock on each new minute.
   setTimeout(() => {

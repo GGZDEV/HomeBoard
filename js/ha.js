@@ -168,6 +168,11 @@ HD.HAConnection = class HAConnection {
   }
 
   // Per-user storage inside Home Assistant: the layout follows you on every screen.
+  // Media library of a player (Spotify: playlists, albums…). No id = the root.
+  browseMedia(entityId, id, type) {
+    return this.send({ type: 'media_player/browse_media', entity_id: entityId, ...(id ? { media_content_id: id, media_content_type: type } : {}) });
+  }
+
   getUserData(key) {
     return this.send({ type: 'frontend/get_user_data', key }).then((r) => (r ? r.value : null));
   }
