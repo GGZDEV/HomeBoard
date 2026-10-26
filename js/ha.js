@@ -49,7 +49,7 @@ HD.HAConnection = class HAConnection {
 
       ws.onmessage = (ev) => {
         let msg;
-        try { msg = JSON.parse(ev.data); } catch { return; }
+        try { msg = JSON.parse(ev.data); } catch (e) { return; }
         const batch = Array.isArray(msg) ? msg : [msg];
         for (const m of batch) this.handle(m, done);
       };

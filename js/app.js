@@ -17,9 +17,9 @@
 
   // ---------- persistence ----------
   const store = {
-    get(k, def) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : def; } catch { return def; } },
-    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* private mode */ } },
-    del(k) { try { localStorage.removeItem(k); } catch { /* ignore */ } }
+    get(k, def) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : def; } catch (e) { return def; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* private mode */ } },
+    del(k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } }
   };
   let tab = store.get('hd.tab', 'rooms');
   if (!TABS.some((t) => t.id === tab)) tab = 'rooms';
@@ -574,7 +574,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     const a = st.attributes;
     const step = Number(a.target_temp_step) || (a.temperature_unit === '°F' ? 1 : 0.5);
     const cur = targetTemp(st);
-    const next = Math.max(Number(a.min_temp ?? 7), Math.min(Number(a.max_temp ?? 35), Math.round((cur + dir * step) * 10) / 10));
+    const next = Math.max(Number(a.min_temp != null ? a.min_temp : 7), Math.min(Number(a.max_temp != null ? a.max_temp : 35), Math.round((cur + dir * step) * 10) / 10));
     const p = app.pendingTemp[st.entity_id] || {};
     clearTimeout(p.timer);
     // Batch quick taps into one service call.
@@ -786,8 +786,13 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     } else if (act === 'outdoor') {
       L.data.outdoor = t.value; L.save(); render();
     } else if (t.id === 'import-file' && t.files[0]) {
-      t.files[0].text().then((txt) => { L.importJson(txt); showToast('Disposition importée.'); })
-        .catch((err) => showToast('Import impossible : ' + err.message));
+      // FileReader rather than File.text(): works on older Android browsers.
+      const reader = new FileReader();
+      reader.onload = () => {
+        try { L.importJson(String(reader.result)); showToast('Disposition importée.'); } catch (err) { showToast('Import impossible : ' + err.message); }
+      };
+      reader.onerror = () => showToast('Import impossible : fichier illisible.');
+      reader.readAsText(t.files[0]);
     }
   });
 

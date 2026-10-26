@@ -40,6 +40,24 @@
   </div>
 </div>
 <div id="app"></div>
+<script>
+// If a script fails (e.g. a browser too old), show why instead of a blank page.
+// Old syntax on purpose so it runs everywhere.
+(function () {
+  function show(msg) {
+    var app = document.getElementById('app');
+    if (!app || app.children.length) return; // the dashboard already started: leave it alone
+    app.innerHTML = '<main class="glass login" style="max-width:560px"><h1 style="font-size:24px">Le tableau de bord n\'a pas pu démarrer</h1>' +
+      '<p class="hint" style="margin-top:12px;word-break:break-word"></p>' +
+      '<p class="hint" style="margin-top:12px">Navigateur : ' + navigator.userAgent.replace(/[<>&]/g, '') + '</p></main>';
+    app.querySelector('p').textContent = msg;
+  }
+  window.addEventListener('error', function (e) { show((e.message || 'Erreur') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
+  window.addEventListener('load', function () {
+    setTimeout(function () { var app = document.getElementById('app'); if (app && !app.children.length) show('Aucun contenu affiché : un script ne s\'est pas chargé.'); }, 3000);
+  });
+})();
+</script>
 <script src="js/icons.js?v=dev"></script>
 <script src="js/ha.js?v=dev"></script>
 <script src="js/demo.js?v=dev"></script>

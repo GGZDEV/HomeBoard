@@ -110,7 +110,7 @@ HD.DemoConnection = class DemoConnection {
   set(id, state, attrs = {}) {
     const old = this.states.get(id);
     if (!old) return;
-    const neu = { ...old, state: state ?? old.state, attributes: { ...old.attributes, ...attrs }, last_changed: new Date().toISOString() };
+    const neu = { ...old, state: state != null ? state : old.state, attributes: { ...old.attributes, ...attrs }, last_changed: new Date().toISOString() };
     this.states.set(id, neu);
     setTimeout(() => this.emit('state', { entity_id: id, new_state: JSON.parse(JSON.stringify(neu)) }), 120);
   }

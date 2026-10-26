@@ -53,7 +53,7 @@ window.HD = window.HD || {};
     const title = m.title || (c.global ? M.shortName(st) : 'Climat');
     const a = st.attributes;
     const target = c.targetTemp(st);
-    const min = Number(a.min_temp ?? 7), max = Number(a.max_temp ?? 35);
+    const min = Number(a.min_temp != null ? a.min_temp : 7), max = Number(a.max_temp != null ? a.max_temp : 35);
     const isOff = st.state === 'off';
     let hum = a.current_humidity;
     if (hum == null) {

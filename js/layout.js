@@ -175,8 +175,8 @@ window.HD = window.HD || {};
   };
 
   function clamp(v, lo, hi) { const n = Math.round(Number(v)); return isFinite(n) ? Math.max(lo, Math.min(hi, n)) : lo; }
-  function readLocal(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } }
-  function writeLocal(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* private mode */ } }
+  function readLocal(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
+  function writeLocal(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* private mode */ } }
 
   HD.Layout = L;
 })();
