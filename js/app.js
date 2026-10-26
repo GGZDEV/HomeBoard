@@ -82,7 +82,30 @@
       app.error = e.message;
       app.conn = null;
       conn.close(); // stop background reconnect attempts
+      if (conn.authFailed && conn.authKind === 'oauth') HD.Auth.forget(); // dead session: log in again
       render();
+    });
+  }
+
+  // Connect with a Home Assistant session (sidebar, this device's session, or HA's own login).
+  function connectWithHA(allowAuto) {
+    app.status = 'connecting';
+    app.error = null;
+    render();
+    return HD.Auth.init(allowAuto).then((p) => {
+      if (p) {
+        store.del('hd.noauto');
+        startConnection(new HD.HAConnection(p.hassUrl, p), false);
+        return true;
+      }
+      app.status = 'idle';
+      render();
+      return false;
+    }, (e) => {
+      app.status = 'error';
+      app.error = e.message;
+      render();
+      return false;
     });
   }
 
@@ -90,15 +113,26 @@
     const saved = store.get('hd.conn', null);
     if (saved && saved.demo) startConnection(new HD.DemoConnection(), true);
     else if (saved && saved.url && saved.token) startConnection(new HD.HAConnection(saved.url, saved.token), false);
+    else if (HD.Auth.servedByHA()) connectWithHA(!store.get('hd.noauto', false));
     else render();
   }
 
   function logout() {
-    if (app.conn) app.conn.close();
+    const conn = app.conn;
+    if (conn) { if (conn.revoke) conn.revoke(); conn.close(); }
     Object.assign(app, { conn: null, index: null, states: new Map(), status: 'idle', editing: false, modal: null });
     store.del('hd.conn');
+    // Don't silently reuse the HA session right after an explicit logout.
+    if (HD.Auth.servedByHA()) store.set('hd.noauto', true);
     render();
   }
+
+  const AUTH_LABEL = {
+    parent: "Session de l'interface Home Assistant",
+    oauth: 'Compte Home Assistant (session de cet appareil)',
+    hass: 'Session Home Assistant de ce navigateur',
+    token: "Jeton d'accès longue durée"
+  };
 
   const isDemo = () => app.conn && app.conn.baseUrl === 'demo';
 
@@ -212,25 +246,40 @@
     const saved = store.get('hd.conn', {}) || {};
     const defUrl = saved.url || (location.protocol.startsWith('http') && !/^(localhost|127\.)/.test(location.hostname) ? location.origin : 'http://homeassistant.local:8123');
     const busy = app.status === 'connecting';
-    return `
-<main class="glass login">
+    const viaHA = HD.Auth.servedByHA();
+    const head = `
   <div class="login-head">
     <span class="login-badge">${icon(IC.home, 26)}</span>
     <h1>Connexion à Home Assistant</h1>
     <p class="muted">Le tableau de bord se construit à partir des pièces et appareils trouvés sur votre serveur.</p>
-  </div>
+  </div>`;
+    if (viaHA && busy && !saved.token) {
+      return `<main class="glass login">${head}<p class="muted" role="status">Connexion avec votre compte Home Assistant…</p></main>`;
+    }
+    // Served by Home Assistant: use its accounts; the token form becomes an advanced option.
+    const haLogin = viaHA ? `
+  <div class="login-form">
+    <button class="btn-solid lg" type="button" data-act="ha-login" data-key="ha-login">${icon(IC.home, 18, 2)} Se connecter avec Home Assistant</button>
+    <p class="hint">Avec votre compte Home Assistant habituel. Une seule fois par appareil : la session se renouvelle ensuite toute seule. Depuis la barre latérale de Home Assistant, aucune connexion n'est demandée.</p>
+    ${app.error ? `<p class="error" role="alert">${esc(app.error)}</p>` : ''}
+    <button class="btn-glass" type="button" data-act="demo">Essayer la démo</button>
+  </div>` : '';
+    return `
+<main class="glass login">${head}${haLogin}
+  ${viaHA ? '<details class="advanced"><summary>Utiliser un jeton d\'accès (avancé)</summary>' : ''}
   <form id="login-form" class="login-form">
     <label class="field"><span>Adresse du serveur</span>
       <input name="url" type="url" required value="${esc(defUrl)}" placeholder="http://homeassistant.local:8123" autocomplete="url"></label>
     <label class="field"><span>Jeton d'accès longue durée</span>
       <input name="token" type="password" required value="${esc(saved.token || '')}" placeholder="eyJhbGciOi…" autocomplete="off"></label>
     <p class="hint">Dans Home Assistant : votre profil › Sécurité › Jetons d'accès longue durée › Créer un jeton. Le jeton reste dans ce navigateur.</p>
-    ${app.error ? `<p class="error" role="alert">${esc(app.error)}</p>` : ''}
+    ${app.error && !viaHA ? `<p class="error" role="alert">${esc(app.error)}</p>` : ''}
     <div class="login-actions">
-      <button class="btn-solid" type="submit" ${busy ? 'disabled' : ''}>${busy ? 'Connexion…' : 'Se connecter'}</button>
-      <button class="btn-glass" type="button" data-act="demo">Essayer la démo</button>
+      <button class="${viaHA ? 'btn-glass' : 'btn-solid'}" type="submit" ${busy ? 'disabled' : ''}>${busy ? 'Connexion…' : 'Se connecter avec le jeton'}</button>
+      ${viaHA ? '' : '<button class="btn-glass" type="button" data-act="demo">Essayer la démo</button>'}
     </div>
   </form>
+  ${viaHA ? '</details>' : ''}
 </main>`;
   }
 
@@ -533,7 +582,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
   <section class="list-section">
     <h2>Connexion</h2>
     <div class="card list-item">
-      <span class="stack grow"><span>${isDemo() ? 'Données de démonstration' : esc(app.conn ? app.conn.baseUrl : '')}</span><span class="muted small">${app.conn && app.conn.haVersion ? 'Home Assistant ' + esc(app.conn.haVersion) : ''}</span></span>
+      <span class="stack grow"><span>${isDemo() ? 'Données de démonstration' : esc(app.conn ? app.conn.baseUrl : '')}</span><span class="muted small">${[app.conn && AUTH_LABEL[app.conn.authKind], app.conn && app.conn.haVersion ? 'Home Assistant ' + esc(app.conn.haVersion) : ''].filter(Boolean).join(' · ')}</span></span>
       <button class="btn-glass" data-act="reload" data-key="reload">${icon(IC.refresh, 16)} Recharger</button>
       <button class="btn-glass" data-act="logout" data-key="logout">${icon(IC.logout, 16)} ${isDemo() ? 'Quitter la démo' : 'Se déconnecter'}</button>
     </div>
@@ -713,7 +762,13 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     },
     reload() { loadAll(); },
     logout() { logout(); },
-    demo() { store.set('hd.conn', { demo: true }); startConnection(new HD.DemoConnection(), true); }
+    demo() { store.set('hd.conn', { demo: true }); startConnection(new HD.DemoConnection(), true); },
+    // Reuse an HA session if there is one, otherwise open HA's login page (comes back with ?code=…).
+    'ha-login'() {
+      store.del('hd.noauto');
+      store.del('hd.conn');
+      connectWithHA(true).then((ok) => { if (!ok && !app.error) HD.Auth.login(); });
+    }
   };
 
   // ---------- events ----------
@@ -738,6 +793,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       return;
     }
     store.set('hd.conn', { url, token });
+    store.del('hd.noauto');
     startConnection(new HD.HAConnection(url, token), false);
   });
 

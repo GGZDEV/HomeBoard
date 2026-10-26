@@ -3,9 +3,13 @@
 window.HD = window.HD || {};
 
 HD.HAConnection = class HAConnection {
-  constructor(baseUrl, token) {
+  // `auth` is either a long-lived token (string) or a provider from auth.js
+  // whose getToken() returns a fresh access token on each (re)connection.
+  constructor(baseUrl, auth) {
     this.baseUrl = HD.HAConnection.normalizeUrl(baseUrl);
-    this.token = token;
+    this.authKind = typeof auth === 'string' ? 'token' : auth.kind;
+    this.getToken = typeof auth === 'string' ? () => Promise.resolve(auth) : () => auth.getToken();
+    this.auth = auth;
     this.ws = null;
     this.nextId = 1;
     this.pending = new Map();
@@ -69,11 +73,21 @@ HD.HAConnection = class HAConnection {
 
   async handle(m, done) {
     if (m.type === 'auth_required') {
-      this.ws.send(JSON.stringify({ type: 'auth', access_token: this.token }));
+      const ws = this.ws;
+      this.getToken().then(
+        (token) => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'auth', access_token: token })); },
+        (err) => {
+          // Refresh token revoked or expired: a new login is needed.
+          this.authFailed = !!err.auth;
+          this.emit('status', err.auth ? 'auth_invalid' : 'reconnecting');
+          done(err);
+          ws.close();
+        }
+      );
     } else if (m.type === 'auth_invalid') {
       this.authFailed = true;
       this.emit('status', 'auth_invalid');
-      done(new Error('Jeton refusé : ' + (m.message || 'auth_invalid')));
+      done(new Error((this.authKind === 'token' ? 'Jeton refusé : ' : 'Session refusée : ') + (m.message || 'auth_invalid')));
       this.ws.close();
     } else if (m.type === 'auth_ok') {
       this.retry = 0;
@@ -142,6 +156,11 @@ HD.HAConnection = class HAConnection {
 
   setUserData(key, value) {
     return this.send({ type: 'frontend/set_user_data', key, value });
+  }
+
+  // Logs out of our own HA session (revokes it); a long-lived token is just forgotten.
+  revoke() {
+    return this.auth && this.auth.revoke ? this.auth.revoke() : Promise.resolve();
   }
 
   close() {

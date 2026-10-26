@@ -394,6 +394,14 @@ button.tile.is-on:hover { background: #fff; }
 .hint { font-size: 13px; color: var(--fg-muted); line-height: 1.45; }
 .error { font-size: 14px; font-weight: 500; color: #fff; background: rgba(255, 69, 58, 0.35); padding: 10px 14px; border-radius: 14px; }
 .login-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+.btn-solid.lg { height: 52px; border-radius: 26px; font-size: 16px; width: 100%; }
+.login .login-form > .btn-glass { align-self: flex-start; }
+.advanced { border-top: 1px solid rgba(255, 255, 255, 0.12); padding-top: 18px; }
+.advanced summary { cursor: pointer; font-size: 14px; font-weight: 600; color: var(--fg-muted); list-style: none; display: flex; align-items: center; gap: 8px; }
+.advanced summary::-webkit-details-marker { display: none; }
+.advanced summary::before { content: ''; width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); transition: transform 0.2s ease; }
+.advanced[open] summary::before { transform: rotate(45deg); }
+.advanced[open] .login-form { margin-top: 16px; }
 
 /* ---------- smaller screens ---------- */
 @media (max-width: 1100px) {
