@@ -385,13 +385,15 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     const ts = visibleRooms().filter((r) => r.id !== '__autres').map(roomTemp).filter((t) => t != null);
     return avg(ts);
   }
-  function nowLabel() {
+  function homeClock() {
     const d = new Date();
-    const day = d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
-    return day.charAt(0).toUpperCase() + day.slice(1) + ' · ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    const day = d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+    return `<h1 class="home-date">${esc(day.charAt(0).toUpperCase() + day.slice(1))}</h1>
+  <time class="home-clock" datetime="${d.toISOString()}">${esc(d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }))}</time>`;
   }
 
-  function header(title, summary, editable) {
+  // home: no page title, the date on the left and the clock in the middle instead.
+  function header(title, summary, editable, home) {
     const t = outdoorTemp();
     const fs = fsSupported() && !app.editing
       ? `<button class="card hov round-btn" data-act="fullscreen" data-key="fullscreen" aria-label="${fsEl() ? 'Quitter le plein écran' : 'Plein écran'}" title="${fsEl() ? 'Quitter le plein écran' : 'Plein écran'}">${icon(fsEl() ? IC.shrink : IC.expand, 18, 2)}</button>` : '';
@@ -407,8 +409,8 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       }
     }
     return `
-<header class="page-head">
-  <div class="titles"><h1>${esc(title)}</h1><p class="muted">${esc(summary)}</p></div>
+<header class="page-head${home ? ' is-home' : ''}">
+  ${home ? homeClock() : `<div class="titles"><h1>${esc(title)}</h1><p class="muted">${esc(summary)}</p></div>`}
   <div class="head-actions">
     ${chips}
     ${fs}
@@ -452,7 +454,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     const sun = app.states.get('sun.sun');
     const sunLine = sun && sun.attributes.next_rising && sun.attributes.next_setting
       ? `<span class="hero-foot muted small"><span>Lever ${hhmm(new Date(sun.attributes.next_rising))}</span><span>Coucher ${hhmm(new Date(sun.attributes.next_setting))}</span></span>` : '';
-    return `<button class="card hero-card hero-weather" data-act="weather-open" data-arg="${esc(st.entity_id)}" data-key="hero:wx" aria-label="Météo, prévisions détaillées">
+    return `<div class="card hero-card hero-weather" role="button" tabindex="0" data-act="weather-open" data-arg="${esc(st.entity_id)}" data-key="hero:wx" aria-label="Météo, prévisions détaillées">
       <span class="mod-head"><span class="h2">Météo</span><span class="muted small">${esc(M.shortName(st))}</span></span>
       <span class="wx-hero-now">${W.wxArt(st.state, 56)}
         <span class="stack"><span class="wx-hero-temp">${esc(M.fmtNum(a.temperature, 0))}°</span>
@@ -473,7 +475,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       }).join('')}</span>` : ''}
       <span class="grow"></span>
       ${sunLine}
-    </button>`;
+    </div>`;
   }
 
   function roomCard(room) {
@@ -646,7 +648,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       (app.editing ? `<button class="mod add-tile" style="grid-column: span 1; grid-row: span 2" data-act="add-open" data-key="add-tile">${icon(IC.plus, 26, 2)}<span>Ajouter un module</span></button>` : '');
     const hint = app.editing ? `<p class="edit-hint muted small">${touchFirst() ? 'Maintenez' : 'Attrapez'} un module puis glissez-le sur un autre pour les échanger · étirez son bord droit, son bord bas ou son coin pour le redimensionner · ${icon(IC.palette, 14)} couleurs · ${icon(IC.gear, 14)} appareils, noms et titre${L.isCustom(key) ? ` · <button class="link-btn" data-act="page-reset">${key === 'home-more' ? 'Revenir à l\'écran d\'accueil d\'origine' : 'Revenir à la disposition automatique'}</button>` : ''}</p>` : '';
     // Home: the design's blocks fill the first screen (4 rows), the user's own modules follow below.
-    const head = key === 'home-more' ? header(app.config.location_name || 'Maison', nowLabel(), true) : header(title, pageSummary(key, room, mods), true);
+    const head = key === 'home-more' ? header('', '', true, true) : header(title, pageSummary(key, room, mods), true);
     return head + tabs + hint +
       (mods.length || app.editing
         ? `<div class="mods" data-scroll="page:${esc(key)}">${body}</div>`
@@ -1682,13 +1684,23 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     if (app.renderAfterNote) { app.renderAfterNote = false; setTimeout(render, 0); }
   });
 
+  // Cards that are clickable without being <button> (old browsers shrink a button's content).
+  $app.addEventListener('keydown', (e) => {
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.getAttribute && e.target.getAttribute('role') === 'button' && e.target.dataset.act) { e.preventDefault(); e.target.click(); }
+  });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && gesture) { endGesture(false); return; }
     if (e.key === 'Escape' && app.modal) { app.modal = null; render(); }
   });
 
-  // Music: move the progress bars every second without redrawing the page.
+  // Every second, without redrawing the page: the home clock (even while a dialog is open
+  // or a note is being typed) and the music progress bars.
   setInterval(() => {
+    const clock = $app.querySelector('.home-clock');
+    if (clock) {
+      const now = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+      if (clock.textContent !== now) clock.textContent = now;
+    }
     $app.querySelectorAll('[data-media-pos]').forEach((el) => {
       if (el.dataset.playing !== '1') return;
       const dur = Number(el.dataset.dur);

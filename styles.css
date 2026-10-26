@@ -89,6 +89,12 @@ ul { list-style: none; margin: 0; padding: 0; }
 .page-head h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; white-space: nowrap; }
 .page-head p { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .head-actions { display: flex; align-items: center; gap: 10px; flex: none; }
+/* Home: big date on the left, clock centered on the page, actions on the right. */
+.page-head.is-home { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
+.home-date { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.home-clock { font-size: 40px; font-weight: 700; letter-spacing: -0.02em; line-height: 1; font-variant-numeric: tabular-nums; }
+.page-head.is-home .head-actions { justify-self: end; }
+.hero-weather:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .chip {
   height: 40px; padding: 0 14px; border-radius: 999px; display: flex; align-items: center; gap: 8px;
   font-size: 14px; font-weight: 500; white-space: nowrap;
@@ -550,9 +556,9 @@ button.tile.is-on:hover { filter: brightness(1.06); }
 .wx-hero-hours { display: grid; gap: 4px; padding: 10px 4px; border-radius: 14px; background: rgba(0, 0, 0, 0.14); text-align: center; font-size: 13px; }
 .wx-hero-hours > span { display: flex; flex-direction: column; gap: 6px; }
 .wx-hero-days { display: flex; flex-direction: column; gap: 2px; font-size: 14px; }
-.wx-hero-day { display: grid; grid-template-columns: 44px 1fr 34px 34px; align-items: center; gap: 8px; height: 34px; }
+.wx-hero-day { display: grid; grid-template-columns: 44px minmax(48px, 1fr) 34px 34px; align-items: center; gap: 8px; height: 34px; }
 .wx-hero-day > span:nth-child(3), .wx-hero-day > b { text-align: right; }
-.wx-hero-bar { height: 4px; border-radius: 2px; }
+.wx-hero-bar { display: block; height: 4px; min-width: 48px; border-radius: 2px; }
 .hero-foot { display: flex; justify-content: space-between; }
 
 /* Rooms */
@@ -704,6 +710,10 @@ button.tile.is-on:hover { filter: brightness(1.06); }
   .panel { height: auto; padding: 8px 4px; overflow: visible; }
   .page-head { flex-wrap: wrap; height: auto; }
   .page-head h1 { font-size: 28px; }
+  .page-head.is-home { grid-template-columns: minmax(0, 1fr) auto; }
+  .page-head.is-home .head-actions { grid-column: 1 / -1; justify-self: start; }
+  .home-date { font-size: 22px; }
+  .home-clock { font-size: 30px; }
   .room-tabs { flex-wrap: nowrap; overflow-x: auto; margin: 0 -20px; padding: 0 20px; scrollbar-width: none; }
   .room-tabs::-webkit-scrollbar { display: none; }
   .pill { flex: none; }
