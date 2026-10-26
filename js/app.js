@@ -258,12 +258,27 @@
 
   // Fade the edge of a list that has more to show, so a cut row reads as "scroll for more".
   function fade(el) {
-    if (el.tagName === 'TEXTAREA' || el.classList.contains('panel')) return;
+    // The module grid itself never fades: its cards must stay whole down to the bottom edge.
+    if (el.tagName === 'TEXTAREA' || el.classList.contains('panel') || el.classList.contains('mods')) return;
     const more = el.scrollHeight - el.clientHeight > 4;
     el.classList.toggle('fade-b', more && el.scrollTop + el.clientHeight < el.scrollHeight - 4);
     el.classList.toggle('fade-t', more && el.scrollTop > 4);
   }
-  function updateFades() { $app.querySelectorAll('[data-scroll]').forEach(fade); }
+  function updateFades() { $app.querySelectorAll('[data-scroll]').forEach(fade); fitPills(); }
+  // Room tiles: a row of light buttons that doesn't fit is hidden whole (never cut in half);
+  // "Voir les N" goes first (the room name opens the room too), then the last lights; the power button stays.
+  function fitPills() {
+    $app.querySelectorAll('.room-pills').forEach((box) => {
+      const kids = [...box.children];
+      kids.forEach((k) => { k.hidden = false; });
+      const order = kids.filter((k) => k.classList.contains('ghost'))
+        .concat(kids.filter((k) => k.classList.contains('light-pill') && !k.classList.contains('ghost')).reverse());
+      for (const k of order) {
+        if (box.scrollHeight <= box.clientHeight + 1) break;
+        k.hidden = true;
+      }
+    });
+  }
   $app.addEventListener('scroll', (e) => { if (e.target.dataset && e.target.dataset.scroll) fade(e.target); }, true);
   // Size grid rows from the space really available, so 4 rows = exactly the visible height:
   // a height-4 module is never cut off, whatever the screen. Stacked (phone) layout: natural heights.
@@ -276,11 +291,8 @@
     const cs = getComputedStyle(mods);
     const gap = parseFloat(cs.rowGap) || 16;
     const inner = mods.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
-    const fit = (space) => mods.style.setProperty('--row', Math.max(72, Math.floor((space - 3 * gap) / 4)) + 'px');
-    fit(inner);
-    // More modules below: shorten the rows a little so the first screen's cards end cleanly above
-    // the bottom fade, and the top of the next row peeks out to show the page scrolls.
-    if (mods.scrollHeight > mods.clientHeight + 4) fit(inner - 40);
+    // Exact (fractional) size: the 4th row ends right at the bottom and the 5th starts below the fold.
+    mods.style.setProperty('--row', Math.max(72, (inner - 3 * gap) / 4).toFixed(2) + 'px');
   }
   window.addEventListener('resize', () => { fitRows(); updateFades(); });
 
