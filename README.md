@@ -76,15 +76,16 @@ Les entités masquées, désactivées ou de catégorie *config/diagnostic* sont 
 
 ## Déploiement (Home Assistant VM 101)
 
-Dépôt de référence : `~/.openclaw/workspace/homedashboard` sur OpenClaw (CT 104).
-Copie d'origine : `C:\Users\guill\Desktop\HomeDashboard` sur PCGUIGZ.
+Dépôt de travail : `C:\Users\guill\Desktop\HomeDashboard` sur PCGUIGZ.
+Dépôt distant : `openclaw@100.76.111.11:/home/openclaw/git/homedashboard.git`.
 
-- `deploy/deploy.sh` : publie dans `/config/www/maison` via `ssh proxmox` + `qm guest exec 101`
-  (rien à installer dans HA), sauvegarde la version en ligne dans `/mnt/data/maison-backups`
-  (5 dernières, hors `/config/www`), puis vérifie l'empreinte de chaque fichier servi.
-- `deploy/deploy.sh --rollback` : remet la sauvegarde précédente.
-- `deploy/deploy.ps1` : depuis le PC Windows, envoie le dossier vers le dépôt OpenClaw et lance
-  `deploy.sh` (nécessite une clé SSH du PC autorisée pour `openclaw@192.168.1.231`).
+- Double-cliquez sur `publier.cmd` : il ajoute les modifications, demande une courte description,
+  crée le commit et pousse `main`.
+- Le `git push` lance automatiquement les contrôles JavaScript puis `deploy/deploy.sh` sur le serveur.
+- `deploy/deploy.sh` publie dans `/config/www/maison` via Proxmox, sauvegarde la version en ligne
+  dans `/mnt/data/maison-backups` (5 dernières), puis vérifie chaque fichier servi.
+- `deploy/deploy.sh --rollback` remet la sauvegarde précédente.
+- La clé SSH du PC est limitée à ce seul dépôt Git : elle ne donne pas de terminal sur le serveur.
 
 URL : http://192.168.1.251:8123/local/maison/index.html (`/local/maison/` seul renvoie 403 :
 HA ne sert pas d'index de dossier).
