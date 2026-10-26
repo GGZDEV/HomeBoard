@@ -786,7 +786,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       const ua = navigator.userAgent;
       const b = ua.match(/(SamsungBrowser|Firefox|Edg|Chrome)\/(\d+)/);
       const os = ua.match(/Android [\d.]+|Windows NT [\d.]+|iPhone OS [\d_]+|Mac OS X [\d_]+/);
-      return 'Navigateur : ' + (b ? b[1].replace('Edg', 'Edge') + ' ' + b[2] : 'inconnu') + (os ? ' · ' + os[0].replace(/_/g, '.') : '') + ' · écran ' + innerWidth + '×' + innerHeight;
+      return 'Version ' + (window.HD_VERSION || '?') + ' · Navigateur : ' + (b ? b[1].replace('Edg', 'Edge') + ' ' + b[2] : 'inconnu') + (os ? ' · ' + os[0].replace(/_/g, '.') : '') + ' · écran ' + innerWidth + '×' + innerHeight;
     })())}</p>
     <div class="card list-item">
       <span class="stack grow"><span>Plein écran automatique</span><span class="muted small">${fsSupported() ? 'Le premier toucher passe la page en plein écran, et y revient si on en sort. Réglage propre à cet appareil.' : 'Ce navigateur ne permet pas le plein écran.'}</span></span>

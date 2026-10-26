@@ -8,15 +8,28 @@
 <script>
 // Anti-cache : Home Assistant sert /local avec un cache long. version.json est lu sans cache ;
 // si une version plus récente est publiée, on recharge index.html?v=<version> (nouvelle URL = pas de cache).
+// Vérifié au chargement, puis toutes les 2 min et au réveil de l'écran : une tablette murale
+// restée ouverte se met à jour toute seule après chaque publication.
 (function () {
   var v = 'dev';
-  fetch('version.json', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) {
-    if (!j.v || j.v === v) return;
-    var u = new URL(location.href);
-    if (u.searchParams.get('v') === j.v) return;
-    u.searchParams.set('v', j.v);
-    location.replace(u.href);
-  }).catch(function () {});
+  window.HD_VERSION = v;
+  function busy() {
+    // Ne pas recharger pendant qu'on écrit une note ou qu'une fenêtre de réglage est ouverte.
+    var a = document.activeElement;
+    return !!document.querySelector('.modal') || !!(a && /^(TEXTAREA|INPUT|SELECT)$/.test(a.tagName));
+  }
+  function check() {
+    fetch('version.json?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) {
+      if (!j.v || j.v === v || busy()) return;
+      var u = new URL(location.href);
+      if (u.searchParams.get('v') === j.v) return;
+      u.searchParams.set('v', j.v);
+      location.replace(u.href);
+    }).catch(function () {});
+  }
+  check();
+  setInterval(check, 120000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) check(); });
 })();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
