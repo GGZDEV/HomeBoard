@@ -9,7 +9,7 @@ window.HD = window.HD || {};
   const REMOTE_KEY = 'maison_dashboard';
 
   const uid = () => 'm' + Math.random().toString(36).slice(2, 9);
-  const blank = () => ({ v: 1, pages: {}, rooms: { order: [], hidden: {} }, accent: '#FF9F0A', names: {} });
+  const blank = () => ({ v: 1, pages: {}, rooms: { order: [], hidden: {} }, accent: '#F5C542', names: {} });
 
   const L = {
     data: blank(),
@@ -53,6 +53,11 @@ window.HD = window.HD || {};
       if (!d || typeof d !== 'object' || d.v !== 1 || typeof d.pages !== 'object') return null;
       const out = blank();
       out.accent = typeof d.accent === 'string' && /^#[0-9a-f]{6}$/i.test(d.accent) ? d.accent : out.accent;
+      // The old default orange becomes the new design's yellow, unless the user picked it on purpose.
+      if (out.accent === '#FF9F0A' && !d.accentSet) out.accent = '#F5C542';
+      if (d.accentSet) out.accentSet = true;
+      if (d.hero === false) out.hero = false; // home screen (tablet design) on by default
+      if (d.memo && typeof d.memo.text === 'string') out.memo = { text: d.memo.text.slice(0, 20000), updated: Number(d.memo.updated) || 0 };
       if (typeof d.outdoor === 'string') out.outdoor = d.outdoor;
       if (d.names && typeof d.names === 'object') {
         for (const [k, v] of Object.entries(d.names)) if (typeof v === 'string' && v.trim()) out.names[k] = v.trim().slice(0, 80);
@@ -101,7 +106,7 @@ window.HD = window.HD || {};
 
     resetPage(key) { delete this.data.pages[key]; this.save(); },
     // Layout only: accent and custom labels are kept.
-    resetAll() { const { accent, names } = this.data; this.data = blank(); Object.assign(this.data, { accent, names }); this.save(); },
+    resetAll() { const { accent, accentSet, names, memo } = this.data; this.data = blank(); Object.assign(this.data, { accent, accentSet, names, memo }); this.save(); },
 
     newModule(type, scope) {
       const t = T[type];

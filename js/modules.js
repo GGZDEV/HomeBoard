@@ -23,7 +23,7 @@ window.HD = window.HD || {};
     { id: 'rose', name: 'Ambiance rose', color: '#FF8FB1', label: 'Couleur · Rose', rgb: [255, 143, 177] }
   ];
 
-  const ACCENTS = ['#FF9F0A', '#0A84FF', '#30D158', '#BF5AF2', '#FF375F', '#64D2FF', '#FFD60A', '#AC8E68'];
+  const ACCENTS = ['#F5C542', '#FF9F0A', '#0A84FF', '#30D158', '#BF5AF2', '#FF375F', '#64D2FF', '#AC8E68'];
 
   // Temperature zones for thermometers: cold / comfort / warm / hot. Thresholds are per module.
   const ZONES = [
@@ -555,5 +555,14 @@ window.HD = window.HD || {};
     rooms: { name: 'Pièces', desc: 'Résumé de chaque pièce ; un clic ouvre la pièce.', icon: IC.home, w: 4, h: 2, noEntities: true, render: rooms }
   };
 
-  HD.Modules = { types: T, lightState, TONES, ACCENTS, ZONES, tempThresholds, tempZone, tempColorsOn, wxIcon, dayLabel, dailyItems, whenLabel, dayTitle, transitDirections };
+  // Large two-tone weather picture for the home screen (sun in yellow, cloud in white).
+  function wxArt(cond, size) {
+    const s = size || 56;
+    const svg = (body) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="${esc(M.WEATHER[cond] || cond)}">${body}</svg>`;
+    if (cond === 'sunny') return svg('<g stroke="#F5C542"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.4 1.4M17.6 17.6 19 19M5 19l1.4-1.4M17.6 6.4 19 5"></path></g>');
+    if (cond === 'partlycloudy') return svg('<g stroke="#F5C542"><circle cx="8" cy="8" r="3"></circle><path d="M8 2v1.5M2 8h1.5M3.8 3.8l1 1M12.2 3.8l-1 1"></path></g><path stroke="#FFFFFF" d="M9 20h9a3.5 3.5 0 0 0 0-7 5 5 0 0 0-9.6 1.2A3 3 0 0 0 9 20z"></path>');
+    return svg(`<path stroke="#FFFFFF" d="${wxIcon(cond)}"></path>`);
+  }
+
+  HD.Modules = { types: T, lightState, TONES, ACCENTS, ZONES, tempThresholds, tempZone, tempColorsOn, wxIcon, wxArt, dayLabel, dailyItems, whenLabel, dayTitle, transitDirections, calEvents, departures, LINES };
 })();

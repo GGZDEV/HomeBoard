@@ -33,6 +33,20 @@ python -m http.server 8080
 
 Le bouton **Essayer la démo** lance des données fictives (celles de la maquette) sans serveur.
 
+## Écran d'accueil (tablette)
+
+Le premier écran de l'Accueil reprend le design « Dashboard Maison – tablette » (1280×800) et
+remplit exactement l'écran :
+- **Météo** : actuelle, 5 prochaines heures, 4 jours, lever/coucher du soleil (`sun.sun`) ; un toucher ouvre le détail
+- **Pièces** : température (point vert = confort, ⚠ = valeur à vérifier), humidité, lampes allumées ;
+  boutons des lampes à toucher, bouton pour éteindre la pièce, « Voir les N » ouvre la pièce
+- **Scènes** : « Tout éteindre » (toutes les lampes) + 3 scènes Home Assistant
+- **Agenda** : 7 jours des calendriers HA, avec une alerte si des RER sont supprimés ou en retard dans l'heure
+- **Notes** : liste à cocher (ajout au clavier, « Effacer les cochées »), enregistrée dans le compte HA
+
+En faisant défiler, vos propres modules se placent **sous** cet écran (crayon › « + Module »).
+Réglages › Disposition › « Écran d'accueil tablette » permet de revenir à un Accueil 100 % modules.
+
 ## Pages et modules
 
 Chaque page (Accueil, chaque pièce, Automatisations, Énergie) est une grille de **modules**

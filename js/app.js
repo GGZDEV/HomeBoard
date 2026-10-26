@@ -5,7 +5,7 @@
   const T = HD.Modules.types;
   const L = HD.Layout;
   const { esc, icon, plural, avg } = HD.UI;
-  const ACCENTS = ['#FF9F0A', '#0A84FF', '#30D158', '#BF5AF2', '#FF375F', '#64D2FF'];
+  const ACCENTS = ['#F5C542', '#FF9F0A', '#0A84FF', '#30D158', '#BF5AF2', '#FF375F', '#64D2FF'];
   const TABS = [
     { id: 'home', label: 'Accueil', icon: IC.home },
     { id: 'rooms', label: 'Pièces', icon: IC.grid },
@@ -190,8 +190,13 @@
     return { states: app.states, index: app.index, room: room || null, sortByRoom };
   }
 
+  // Home screen of the tablet design (weather, rooms, scenes, agenda, notes); can be switched off in Réglages.
+  const heroOn = () => L.data.hero !== false;
+
   function pageKey() {
     if (app.tab === 'rooms') { const r = currentRoom(); return r ? 'room:' + r.id : null; }
+    // Under the home screen: the user's own modules (separate from the former home layout).
+    if (app.tab === 'home' && heroOn()) return 'home-more';
     return app.tab;
   }
 
@@ -221,11 +226,12 @@
     setTimeout(() => { app.renderQueued = false; render(); }, 16);
   }
 
-  function render() {
+  // force: redraw even while a note field has focus (used right after adding a note).
+  function render(force) {
     if (app.dragging) { app.renderAfterDrag = true; return; }
     // Typing a note: redrawing would break the (Android) keyboard; redraw when leaving the note.
     const typing = document.activeElement;
-    if (typing && typing.classList && typing.classList.contains('note')) { app.renderAfterNote = true; return; }
+    if (force !== true && typing && typing.classList && (typing.classList.contains('note') || typing.classList.contains('memo-input'))) { app.renderAfterNote = true; return; }
     document.documentElement.style.setProperty('--accent', L.data.accent);
     M.setNames(L.data.names);
     const active = document.activeElement;
@@ -252,7 +258,7 @@
 
   // Fade the edge of a list that has more to show, so a cut row reads as "scroll for more".
   function fade(el) {
-    if (el.tagName === 'TEXTAREA') return;
+    if (el.tagName === 'TEXTAREA' || el.classList.contains('panel')) return;
     const more = el.scrollHeight - el.clientHeight > 4;
     el.classList.toggle('fade-b', more && el.scrollTop + el.clientHeight < el.scrollHeight - 4);
     el.classList.toggle('fade-t', more && el.scrollTop > 4);
@@ -268,7 +274,9 @@
     if (window.matchMedia && window.matchMedia(STACKED).matches) { mods.style.removeProperty('--row'); return; }
     const cs = getComputedStyle(mods);
     const gap = parseFloat(cs.rowGap) || 16;
-    const inner = mods.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
+    // Home: modules below the home screen get the same scale (a height-4 module = one screen).
+    const hero = $app.querySelector('.hero');
+    const inner = hero ? hero.clientHeight : mods.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
     mods.style.setProperty('--row', Math.max(72, Math.floor((inner - 3 * gap) / 4)) + 'px');
   }
   window.addEventListener('resize', () => { fitRows(); updateFades(); });
@@ -316,12 +324,16 @@
 
   function shell(content) {
     const status = app.status === 'reconnecting' ? '<div class="banner" role="status">Connexion perdue, reconnexion…</div>' : '';
+    // Rail flush to the left; Réglages pushed to the bottom.
+    const btn = (t) => `<button class="rail-btn${t.id === app.tab ? ' is-on' : ''}" aria-label="${t.label}" title="${t.label}" ${t.id === app.tab ? 'aria-current="page"' : ''} data-act="tab" data-arg="${t.id}" data-key="tab:${t.id}">${icon(t.icon, 22)}</button>`;
+    const home = app.tab === 'home' && heroOn();
     return `
-<nav class="glass rail" aria-label="Navigation principale">
-  ${TABS.map((t) => `<button class="rail-btn${t.id === app.tab ? ' is-on' : ''}" aria-label="${t.label}" title="${t.label}" ${t.id === app.tab ? 'aria-current="page"' : ''} data-act="tab" data-arg="${t.id}" data-key="tab:${t.id}">${icon(t.icon, 22)}</button>`).join('')}
+<nav class="rail" aria-label="Navigation principale">
+  ${TABS.filter((t) => t.id !== 'settings').map(btn).join('')}
+  <span class="rail-spacer"></span>
+  ${btn(TABS.find((t) => t.id === 'settings'))}
 </nav>
-<main class="glass panel${app.editing ? ' is-editing' : ''}">${status}${content}</main>
-<div class="grabber" aria-hidden="true"><span class="dot"></span><span class="bar"></span></div>
+<main class="panel${home ? ' is-home' : ''}${app.editing ? ' is-editing' : ''}"${home ? ' data-scroll="home-page"' : ''}>${status}${content}</main>
 ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
   }
 
@@ -347,20 +359,237 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     if (store.get('hd.autofs', false) && fsSupported() && !fsEl()) enterFs();
   }, true);
 
+  // Lights currently on in the whole house (header chip and Pièces card).
+  function lightsOn() {
+    if (!app.index) return 0;
+    let n = 0;
+    for (const id of app.index.visible) { const s = app.states.get(id); if (s && M.domainOf(id) === 'light' && s.state === 'on') n++; }
+    return n;
+  }
+  // Average indoor temperature: rooms only ("Autres" often holds device-internal sensors).
+  function indoorTemp() {
+    const ts = visibleRooms().filter((r) => r.id !== '__autres').map(roomTemp).filter((t) => t != null);
+    return avg(ts);
+  }
+  function nowLabel() {
+    const d = new Date();
+    const day = d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+    return day.charAt(0).toUpperCase() + day.slice(1) + ' · ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  }
+
   function header(title, summary, editable) {
     const t = outdoorTemp();
     const fs = fsSupported() && !app.editing
-      ? `<button class="card hov round-btn" data-act="fullscreen" data-key="fullscreen" aria-label="${fsEl() ? 'Quitter le plein écran' : 'Plein écran'}" title="${fsEl() ? 'Quitter le plein écran' : 'Plein écran'}">${icon(fsEl() ? IC.shrink : IC.expand, 19, 2)}</button>` : '';
+      ? `<button class="card hov round-btn" data-act="fullscreen" data-key="fullscreen" aria-label="${fsEl() ? 'Quitter le plein écran' : 'Plein écran'}" title="${fsEl() ? 'Quitter le plein écran' : 'Plein écran'}">${icon(fsEl() ? IC.shrink : IC.expand, 18, 2)}</button>` : '';
+    // Home: lights on + indoor/outdoor temperatures; other pages: outdoor only.
+    let chips = '';
+    if (!app.editing) {
+      if (app.tab === 'home') {
+        const n = lightsOn(), ti = indoorTemp();
+        chips = `<span class="chip">${icon(IC.bulb, 18)}${plural(n, 'allumé', 'allumés')}</span>` +
+          (ti != null || t != null ? `<span class="chip">${[ti != null ? 'Int. ' + M.fmtNum(ti) + '°' : '', t != null ? 'Ext. ' + M.fmtNum(t, 0) + '°' : ''].filter(Boolean).join(' · ')}</span>` : '');
+      } else if (t != null) {
+        chips = `<span class="chip">${icon(IC.cloud, 18)}Ext. ${esc(M.fmtNum(t, 0))}°</span>`;
+      }
+    }
     return `
 <header class="page-head">
   <div class="titles"><h1>${esc(title)}</h1><p class="muted">${esc(summary)}</p></div>
   <div class="head-actions">
-    ${t != null && !app.editing ? `<div class="card chip">${icon(IC.cloud)}<span>Extérieur ${esc(M.fmtNum(t, 0))}°</span></div>` : ''}
+    ${chips}
     ${fs}
     ${editable && app.editing ? `<button class="btn-glass" data-act="add-open" data-key="add-open">${icon(IC.plus, 18, 2)} Module</button>` : ''}
     ${editable ? `<button class="${app.editing ? 'btn-solid' : 'card hov round-btn'}" data-act="edit-toggle" data-key="edit-toggle" aria-label="${app.editing ? 'Terminer la personnalisation' : 'Personnaliser cette page'}" title="Personnaliser">${app.editing ? icon(IC.check, 18, 2.2) + ' Terminé' : icon(IC.pencil, 19)}</button>` : ''}
   </div>
 </header>`;
+  }
+
+  // ----- home screen (design « Dashboard Maison – tablette ») -----
+  // Three columns filling the screen: weather | rooms + scenes | agenda + notes.
+  const allStates = () => [...app.index.visible].map((id) => app.states.get(id)).filter(Boolean);
+  const hhmm = (d) => d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  const WARN_PATH = 'M12 3 2 20h20z M12 10v4 M12 17v.5';
+
+  function heroView() {
+    return `<div class="hero">
+      ${heroWeather()}
+      <div class="hero-col">${heroRooms()}${heroScenes()}</div>
+      <div class="hero-col">${heroAgenda()}${heroNotes()}</div>
+    </div>`;
+  }
+
+  function heroWeather() {
+    const W = HD.Modules;
+    const st = allStates().find((s) => M.domainOf(s.entity_id) === 'weather');
+    if (!st) return `<section class="card hero-card hero-weather"><div class="mod-head"><h2>Météo</h2></div><p class="muted small">Aucune entité météo dans Home Assistant (intégration Météo-France par exemple).</p></section>`;
+    const a = st.attributes;
+    const days = W.dailyItems(forecastFor(st, 'main'));
+    const today = new Date().toDateString();
+    const todayFc = days.find((f) => new Date(f.datetime).toDateString() === today);
+    const next = days.filter((f) => new Date(f.datetime).toDateString() !== today && new Date(f.datetime) > new Date()).slice(0, 4);
+    const hourlyFc = forecastFor(st, 'hourly');
+    const hours = hourlyFc && hourlyFc.items ? hourlyFc.items.filter((h) => Date.parse(h.datetime) > Date.now() - 30 * 60000).slice(0, 5) : [];
+    const lo = Math.min(...next.map((f) => (f.templow != null ? f.templow : f.temperature)));
+    const hi = Math.max(...next.map((f) => f.temperature));
+    const span = hi - lo || 1;
+    const sun = app.states.get('sun.sun');
+    const sunLine = sun && sun.attributes.next_rising && sun.attributes.next_setting
+      ? `<span class="hero-foot muted small"><span>Lever ${hhmm(new Date(sun.attributes.next_rising))}</span><span>Coucher ${hhmm(new Date(sun.attributes.next_setting))}</span></span>` : '';
+    return `<button class="card hero-card hero-weather" data-act="weather-open" data-arg="${esc(st.entity_id)}" data-key="hero:wx" aria-label="Météo, prévisions détaillées">
+      <span class="mod-head"><span class="h2">Météo</span><span class="muted small">${esc(M.shortName(st))}</span></span>
+      <span class="wx-hero-now">${W.wxArt(st.state, 56)}
+        <span class="stack"><span class="wx-hero-temp">${esc(M.fmtNum(a.temperature, 0))}°</span>
+        <span class="wx-hero-sub">${esc(M.WEATHER[st.state] || st.state)}${todayFc && todayFc.templow != null ? ' · ' + esc(M.fmtNum(todayFc.templow, 0)) + '° / ' + esc(M.fmtNum(todayFc.temperature, 0)) + '°' : ''}</span></span>
+      </span>
+      <span class="wx-hero-chips">
+        ${a.humidity != null ? `<span>Hum. ${esc(M.fmtNum(a.humidity, 0))} %</span>` : ''}
+        ${a.wind_speed != null ? `<span>Vent ${esc(M.fmtNum(a.wind_speed, 0))} ${esc(a.wind_speed_unit || 'km/h')}</span>` : ''}
+      </span>
+      ${hours.length ? `<span class="wx-hero-hours" style="grid-template-columns: repeat(${hours.length}, 1fr)">${hours.map((h) =>
+        `<span><span class="muted">${new Date(h.datetime).getHours()}h</span><b>${esc(M.fmtNum(h.temperature, 0))}°</b></span>`).join('')}</span>` : ''}
+      ${next.length ? `<span class="wx-hero-days">${next.map((f, i) => {
+        const l = f.templow != null ? f.templow : f.temperature;
+        const a1 = Math.round(((l - lo) / span) * 100), a2 = Math.max(a1 + 6, Math.round(((f.temperature - lo) / span) * 100));
+        return `<span class="wx-hero-day"><span class="muted">${esc(W.dayLabel(f.datetime, i + 1))}</span>
+          <span class="wx-hero-bar" style="background: linear-gradient(90deg, rgba(255,255,255,0.15) ${a1}%, var(--accent) ${a1}%, var(--accent) ${a2}%, rgba(255,255,255,0.15) ${a2}%)"></span>
+          <span class="muted">${esc(M.fmtNum(l, 0))}°</span><b>${esc(M.fmtNum(f.temperature, 0))}°</b></span>`;
+      }).join('')}</span>` : ''}
+      <span class="grow"></span>
+      ${sunLine}
+    </button>`;
+  }
+
+  function roomCard(room) {
+    const sts = room.ids.map((id) => app.states.get(id)).filter(Boolean);
+    const lights = sts.filter((s) => M.domainOf(s.entity_id) === 'light');
+    const devices = sts.filter(M.isGridEntity);
+    const on = lights.filter((l) => l.state === 'on');
+    const hums = sts.filter((s) => M.isHumidity(s) && M.isAvail(s)).map((s) => Number(s.state));
+    const t = roomTemp(room);
+    const z = HD.Modules.tempZone(t, {});
+    // Comfort = green dot; cold/warm = colored dot; implausible (very hot) = warning sign.
+    const tempHtml = t == null ? '' : z && z.id === 'tres'
+      ? `<span class="room-temp-big is-warn" title="Valeur à vérifier">${icon(WARN_PATH, 18, 2)}${esc(M.fmtNum(t))}°</span>`
+      : `<span class="room-temp-big"><i style="background: ${z && z.id !== 'confort' ? z.color : 'var(--ok)'}"></i>${esc(M.fmtNum(t))}°</span>`;
+    const sub = [hums.length ? 'Hum. ' + M.fmtNum(avg(hums), 0) + ' %' : '', lights.length ? on.length + '/' + lights.length + ' ' + (on.length > 1 ? 'allumés' : 'allumé') : ''].filter(Boolean).join(' · ');
+    const shown = lights.slice(0, 3);
+    const pills = shown.map((l) => {
+      const isOn = l.state === 'on';
+      const off = M.UNAVAILABLE.includes(l.state);
+      return `<button class="light-pill${isOn ? ' is-on' : ''}" ${off ? 'disabled' : ''} aria-pressed="${isOn}" data-act="dev" data-arg="${esc(l.entity_id)}" data-key="hero:${esc(l.entity_id)}">
+        <span class="lp-ic">${icon(IC.bulb, 16, 2)}</span><span class="lp-name">${esc(M.shortName(l, room.name))}</span></button>`;
+    }).join('');
+    const more = devices.length > shown.length
+      ? `<button class="light-pill ghost" data-act="open-room" data-arg="${esc(room.id)}" data-key="hero:more:${esc(room.id)}">Voir les ${devices.length}</button>` : '';
+    const power = on.length
+      ? `<button class="power-btn" aria-label="Éteindre ${esc(room.name)}" data-act="room-off" data-arg="${esc(room.id)}" data-key="hero:off:${esc(room.id)}">${icon(IC.power, 18)}</button>` : '';
+    const empty = !devices.length
+      ? `<div class="room-empty">Aucun appareil${room.id !== '__autres' && app.conn && app.conn.baseUrl !== 'demo' ? ` · <a class="btn-mini" href="${esc(app.conn.baseUrl)}/config/areas/area/${encodeURIComponent(room.id)}" target="_blank" rel="noopener">+ Ajouter</a>` : ''}</div>` : '';
+    return `<div class="room-tile">
+      <div class="room-tile-head">
+        <button class="room-tile-name" data-act="open-room" data-arg="${esc(room.id)}" data-key="hero:room:${esc(room.id)}"><span class="rt-name">${esc(room.name)}</span>${sub ? `<span class="muted small">${esc(sub)}</span>` : ''}</button>
+        ${tempHtml}
+      </div>
+      ${empty || `<div class="room-pills">${pills}${more}${power}</div>`}
+    </div>`;
+  }
+
+  function heroRooms() {
+    const rooms = visibleRooms();
+    const ti = indoorTemp();
+    const n = lightsOn();
+    const fits = rooms.length <= 4;
+    return `<section class="card hero-card hero-rooms" aria-label="Pièces">
+      <div class="mod-head"><h2>Pièces</h2><span class="muted small">${[ti != null ? 'Moy. ' + M.fmtNum(ti) + '°' : '', plural(n, 'allumé', 'allumés')].filter(Boolean).join(' · ')}</span></div>
+      <div class="room-grid${fits ? '' : ' is-scroll'}"${fits ? ` style="grid-template-rows: repeat(${Math.max(1, Math.ceil(rooms.length / 2))}, minmax(0, 1fr))"` : ' data-scroll="hero-rooms"'}>
+        ${rooms.length ? rooms.map(roomCard).join('') : '<p class="muted small">Aucune pièce : assignez vos appareils à des zones dans Home Assistant.</p>'}
+      </div>
+    </section>`;
+  }
+
+  function heroScenes() {
+    const scenes = allStates().filter((s) => M.domainOf(s.entity_id) === 'scene')
+      .sort((a, b) => M.shortName(a).localeCompare(M.shortName(b), 'fr')).slice(0, 3);
+    const btn = (act, arg, ic, label) => `<button class="scene-chip" data-act="${act}" data-arg="${esc(arg)}" data-key="hero:sc:${esc(arg)}">${icon(ic, 18)}<span>${esc(label)}</span></button>`;
+    return `<section class="card hero-scenes" aria-label="Scènes" style="grid-template-columns: repeat(${scenes.length + 1}, minmax(0, 1fr))">
+      ${btn('all-off', 'all', IC.power, 'Tout éteindre')}
+      ${scenes.map((s) => btn('scene', s.entity_id, M.sceneIcon(M.shortName(s)), M.shortName(s))).join('')}
+    </section>`;
+  }
+
+  function heroAgenda() {
+    const W = HD.Modules;
+    const cals = allStates().filter((s) => M.domainOf(s.entity_id) === 'calendar');
+    const data = cals.length ? calendarFor(cals, 7) : { raw: {} };
+    const events = W.calEvents(cals, data.raw).filter((ev) => ev.end > new Date());
+    app.calEvents = app.calEvents || {};
+    app.calEvents['hero-agenda'] = events;
+    // Real-time train alert (cancellations / delays in the next hour), from the IDFM sensor.
+    const tr = allStates().find((s) => M.domainOf(s.entity_id) === 'sensor' && s.attributes.MonitoredStopVisit);
+    let alert = '';
+    if (tr) {
+      const soon = W.departures(tr).filter((d) => d.time < Date.now() + 3600000);
+      const cancelled = soon.filter((d) => d.cancelled).length;
+      const maxDelay = Math.max(0, ...soon.filter((d) => !d.cancelled).map((d) => d.delay));
+      if (cancelled || maxDelay >= 3) {
+        const line = (soon[0] && soon[0].line) || W.LINES.C01728;
+        const what = [cancelled ? plural(cancelled, 'train supprimé', 'trains supprimés') : '', maxDelay >= 3 ? 'retards jusqu\'à +' + maxDelay + ' min' : ''].filter(Boolean).join(' · ');
+        alert = `<div class="agenda-alert">${icon(WARN_PATH, 20, 2)}
+          <span class="stack"><span class="cal-title">${esc(line.mode + ' ' + line.name)} · ${esc(M.shortName(tr))} : ${esc(what)}</span><span class="muted small">Dans l'heure qui vient</span></span></div>`;
+      }
+    }
+    let list = '';
+    let lastDay = null;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    if (alert) { list += `<h3 class="cal-day">Aujourd'hui</h3>${alert}`; lastDay = today.getTime(); }
+    events.forEach((ev, i) => {
+      const d = ev.start < today ? new Date(today) : new Date(ev.start.getFullYear(), ev.start.getMonth(), ev.start.getDate());
+      if (d.getTime() !== lastDay) { list += `<h3 class="cal-day">${esc(W.dayTitle(d))}</h3>`; lastDay = d.getTime(); }
+      list += `<button class="agenda-ev" data-act="event-open" data-arg="hero-agenda|${i}" data-key="hero:ev${i}"><span class="cal-bar" style="background: ${ev.color}"></span>
+        <span class="stack"><span class="cal-title">${esc(ev.title)}</span><span class="muted small">${esc(W.whenLabel(ev))}${ev.location ? ' · ' + esc(ev.location) : ''}</span></span></button>`;
+    });
+    if (!events.length && !alert) {
+      list = `<p class="muted small">${!cals.length ? 'Aucun calendrier : connectez Google Agenda dans Home Assistant (« Calendrier distant » ou « Google Calendar »).' : data.loading ? 'Chargement…' : 'Rien de prévu sur 7 jours.'}</p>`;
+    }
+    return `<section class="card hero-card hero-agenda" aria-label="Agenda">
+      <div class="mod-head"><h2>Agenda</h2><span class="muted small">7 jours</span></div>
+      <div class="agenda-list" data-scroll="hero-agenda">${list}</div>
+    </section>`;
+  }
+
+  // Notes as a checklist: one line per item, "[x] " marks a checked one. Shared through the HA account.
+  function memo() {
+    if (!L.data.memo) {
+      // First time: take over the text of an existing Notes module.
+      let text = '';
+      Object.values(L.data.pages).forEach((p) => p.modules.forEach((m) => { if (!text && m.type === 'notes' && m.options.text) text = m.options.text; }));
+      L.data.memo = { text, updated: 0 };
+    }
+    return L.data.memo;
+  }
+  function memoItems() {
+    return memo().text.split('\n').map((l) => l.trim()).filter(Boolean).map((l) => {
+      const m = l.match(/^(?:[-*]\s*)?\[( |x|X)\]\s*(.*)$/);
+      return m ? { done: m[1] !== ' ', text: m[2] } : { done: false, text: l.replace(/^[-*]\s+/, '') };
+    }).filter((it) => it.text);
+  }
+  function saveMemo(items) {
+    L.data.memo = { text: items.map((it) => (it.done ? '[x] ' : '[ ] ') + it.text).join('\n'), updated: Date.now() };
+    L.save();
+  }
+
+  function heroNotes() {
+    const items = memoItems();
+    const m = memo();
+    const when = m.updated ? M.relTime(new Date(m.updated).toISOString()) : null;
+    const anyDone = items.some((it) => it.done);
+    return `<section class="card hero-card hero-notes" aria-label="Notes">
+      <div class="mod-head"><h2>Notes</h2><span class="muted small">${anyDone ? '<button class="link-btn" data-act="memo-clear" data-key="memo-clear">Effacer les cochées</button>' : when ? esc(when) : ''}</span></div>
+      <ul class="memo-list" data-scroll="hero-memo">${items.map((it, i) => `<li><label class="memo-item${it.done ? ' is-done' : ''}">
+        <input type="checkbox" ${it.done ? 'checked' : ''} data-act="memo-check" data-arg="${i}" data-key="memo:${i}"><span>${esc(it.text)}</span></label></li>`).join('')}</ul>
+      <form class="memo-form" id="memo-form"><label class="sr-only" for="memo-input">Nouvelle note</label>
+        <input id="memo-input" class="memo-input" type="text" placeholder="Ajouter une note…" maxlength="200" value="${esc(app.memoDraft || '')}" data-act="memo-draft" data-key="memo-input" enterkeyhint="done" autocomplete="off"></form>
+    </section>`;
   }
 
   // ----- module pages -----
@@ -404,7 +633,13 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     };
     const body = mods.map((m) => moduleView(m, ctx, e)).join('') +
       (app.editing ? `<button class="mod add-tile" style="grid-column: span 1; grid-row: span 2" data-act="add-open" data-key="add-tile">${icon(IC.plus, 26, 2)}<span>Ajouter un module</span></button>` : '');
-    const hint = app.editing ? `<p class="edit-hint muted small">Glissez les modules pour les réordonner · ${icon(IC.width, 14)} largeur · ${icon(IC.height, 14)} hauteur · ${icon(IC.palette, 14)} couleurs · ${icon(IC.gear, 14)} appareils, noms et titre${L.isCustom(key) ? ' · <button class="link-btn" data-act="page-reset">Revenir à la disposition automatique</button>' : ''}</p>` : '';
+    const hint = app.editing ? `<p class="edit-hint muted small">Glissez les modules pour les réordonner · ${icon(IC.width, 14)} largeur · ${icon(IC.height, 14)} hauteur · ${icon(IC.palette, 14)} couleurs · ${icon(IC.gear, 14)} appareils, noms et titre${L.isCustom(key) && key !== 'home-more' ? ' · <button class="link-btn" data-act="page-reset">Revenir à la disposition automatique</button>' : ''}</p>` : '';
+    if (key === 'home-more') {
+      // Home: the design's first screen, then the user's own modules further down (scroll).
+      const below = mods.length || app.editing
+        ? `${app.editing ? `<h2 class="more-title">Sous l'écran d'accueil</h2>${hint}` : ''}<div class="mods mods-flow">${body}</div>` : '';
+      return header(app.config.location_name || 'Maison', nowLabel(), true) + heroView() + below;
+    }
     return header(title, pageSummary(key, room, mods), true) + tabs + hint +
       (mods.length || app.editing
         ? `<div class="mods" data-scroll="page:${esc(key)}">${body}</div>`
@@ -772,6 +1007,10 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
   <section class="list-section">
     <h2>Disposition</h2>
     <p class="muted small">${esc(sync)}. Touchez le crayon sur une page pour ajouter, déplacer, redimensionner ou paramétrer ses modules.</p>
+    <div class="card list-item">
+      <span class="stack grow"><span>Écran d'accueil tablette</span><span class="muted small">Météo, pièces, scènes, agenda et notes sur le premier écran de l'Accueil ; vos modules se placent en dessous. Désactivé : l'Accueil redevient une grille de modules.</span></span>
+      <button class="switch${heroOn() ? ' is-on' : ''}" role="switch" aria-checked="${heroOn()}" aria-label="Écran d'accueil tablette" data-act="hero-toggle" data-key="hero-toggle"><span></span></button>
+    </div>
     <div class="row wrap">
       <button class="btn-glass" data-act="export" data-key="export">${icon(IC.download, 16, 2)} Exporter</button>
       <button class="btn-glass" data-act="import" data-key="import">${icon(IC.upload, 16, 2)} Importer</button>
@@ -992,7 +1231,16 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       L.data.rooms.order = ids;
       L.save(); render();
     },
-    accent(arg) { L.data.accent = arg; L.save(); render(); },
+    accent(arg) { L.data.accent = arg; L.data.accentSet = true; L.save(); render(); },
+    'hero-toggle'() { L.data.hero = !heroOn(); L.save(); render(); },
+    // Home screen
+    'room-off'(id) {
+      const room = app.index.byId.get(id);
+      const ids = room ? room.ids.filter((x) => M.domainOf(x) === 'light' && (app.states.get(x) || {}).state === 'on') : [];
+      if (ids.length) call('light', 'turn_off', ids);
+    },
+    'all-off'() { call('light', 'turn_off', 'all'); },
+    'memo-clear'() { saveMemo(memoItems().filter((it) => !it.done)); render(); },
     export() { download('maison-disposition.json', L.exportJson()); },
     import() { const f = document.getElementById('import-file'); if (f) f.click(); },
     'reset-all'() {
@@ -1028,6 +1276,20 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
   });
 
   $app.addEventListener('submit', (e) => {
+    if (e.target.id === 'memo-form') {
+      e.preventDefault();
+      const text = String(app.memoDraft || '').trim();
+      if (!text) return;
+      saveMemo(memoItems().concat({ done: false, text }));
+      app.memoDraft = '';
+      const input = document.getElementById('memo-input');
+      if (input) input.value = '';
+      app.renderAfterNote = false;
+      render(true);
+      const again = document.getElementById('memo-input');
+      if (again) again.focus(); // keep the keyboard open to add the next one
+      return;
+    }
     if (e.target.id !== 'login-form') return;
     e.preventDefault();
     const fd = new FormData(e.target);
@@ -1053,6 +1315,8 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       const num = host.querySelector('[data-bri-num]');
       if (fill) fill.style.width = e.target.value + '%';
       if (num) num.textContent = e.target.value + ' %';
+    } else if (act === 'memo-draft') {
+      app.memoDraft = e.target.value;
     } else if (act === 'note') {
       // Save the note into the page layout (synced with the HA account), debounced.
       const id = e.target.closest('[data-mod]').dataset.mod;
@@ -1089,6 +1353,11 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
         else call('light', 'turn_on', ids, { brightness_pct: pct });
       }
       if (app.renderAfterDrag) { app.renderAfterDrag = false; queueRender(); }
+    } else if (act === 'memo-check') {
+      const items = memoItems();
+      const it = items[Number(t.dataset.arg)];
+      if (it) { it.done = t.checked; saveMemo(items); }
+      render();
     } else if (act === 'pick') {
       const d = app.modal.draft;
       let ids = Array.isArray(d.entities) ? d.entities.slice() : [];
@@ -1144,7 +1413,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
 
   // Leaving a note: save right away and catch up on updates skipped while typing.
   $app.addEventListener('focusout', (e) => {
-    if (!e.target.classList || !e.target.classList.contains('note')) return;
+    if (!e.target.classList || !(e.target.classList.contains('note') || e.target.classList.contains('memo-input'))) return;
     if (app.noteTimer) { clearTimeout(app.noteTimer); app.noteTimer = null; L.save(); }
     if (app.renderAfterNote) { app.renderAfterNote = false; setTimeout(render, 0); }
   });
@@ -1153,8 +1422,11 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     if (e.key === 'Escape' && app.modal) { app.modal = null; render(); }
   });
 
-  // Refresh relative times ("il y a 5 min") once a minute.
-  setInterval(() => { if (app.index && !app.modal) queueRender(); }, 60000);
+  // Refresh relative times and the header clock on each new minute.
+  setTimeout(() => {
+    if (app.index && !app.modal) queueRender();
+    setInterval(() => { if (app.index && !app.modal) queueRender(); }, 60000);
+  }, 60000 - (Date.now() % 60000) + 50);
 
   document.documentElement.style.setProperty('--accent', L.data.accent);
   connectSaved();

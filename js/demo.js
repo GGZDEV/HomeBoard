@@ -68,6 +68,7 @@ HD.DemoConnection = class DemoConnection {
       S('scene.cinema', ago(1), { friendly_name: 'Cinéma', entity_id: ['light.salon_plafonnier', 'media_player.salon_tv'] }),
       S('scene.nuit', ago(20), { friendly_name: 'Nuit', entity_id: ['light.salon_plafonnier', 'climate.chambre'] }),
       S('scene.absent', 'unknown', { friendly_name: 'Absent', entity_id: [] }),
+      S('sun.sun', 'above_horizon', { friendly_name: 'Soleil', next_rising: (() => { const d = new Date(now); d.setDate(d.getDate() + 1); d.setHours(8, 24, 0, 0); return d.toISOString(); })(), next_setting: (() => { const d = new Date(now); d.setHours(17, 58, 0, 0); if (d < now) d.setDate(d.getDate() + 1); return d.toISOString(); })() }),
       S('sensor.rer_d_le_mee', '0', { friendly_name: 'Le Mée', MonitoredStopVisit: [] }),
       S('calendar.famille', 'off', { friendly_name: 'Famille', message: 'Piscine Léa' }),
       S('calendar.travail', 'off', { friendly_name: 'Travail', message: 'Point équipe' }),
@@ -145,6 +146,8 @@ HD.DemoConnection = class DemoConnection {
   }
 
   async callService(domain, service, ids, data = {}) {
+    // Like HA: entity_id "all" targets every entity of the domain.
+    if (ids === 'all') ids = [...this.states.keys()].filter((id) => id.startsWith(domain + '.'));
     for (const id of [].concat(ids)) {
       const st = this.states.get(id);
       if (!st) continue;
