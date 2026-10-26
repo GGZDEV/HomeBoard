@@ -70,16 +70,21 @@ window.HD = window.HD || {};
         if (!page || !Array.isArray(page.modules)) continue;
         out.pages[key] = {
           ...(page.homeBlocks ? { homeBlocks: true } : {}),
-          modules: page.modules.filter((m) => m && T[m.type]).map((m) => ({
-            id: typeof m.id === 'string' ? m.id : uid(),
-            type: m.type,
-            title: typeof m.title === 'string' ? m.title : '',
-            w: clamp(m.w, 1, 4), h: clamp(m.h, 1, 4),
-            scope: m.scope === 'room' ? 'room' : 'all',
-            entities: Array.isArray(m.entities) ? m.entities.filter((x) => typeof x === 'string') : null,
-            options: m.options && typeof m.options === 'object' ? { ...m.options } : {}
-          }))
+          modules: page.modules.filter((m) => m && T[m.type] && !T[m.type].headerOnly).map(cleanModule)
         };
+      }
+      // Home header: items placed in three zones (date, clock, chips, modules in their header version).
+      if (d.header && Array.isArray(d.header.items)) {
+        out.header = { items: d.header.items.filter((m) => m && T[m.type]).map((m) => ({ ...cleanModule(m), zone: ZONES.includes(m.zone) ? m.zone : 'right' })) };
+      }
+      // Background: a preset, a color, or a picture (dimmed for legibility).
+      if (d.bg && typeof d.bg === 'object') {
+        const b = {};
+        if (typeof d.bg.preset === 'string') b.preset = d.bg.preset;
+        if (typeof d.bg.color === 'string' && /^#[0-9a-f]{6}$/i.test(d.bg.color)) b.color = d.bg.color;
+        if (typeof d.bg.image === 'string' && /^(data:image\/|https?:)/.test(d.bg.image)) b.image = d.bg.image;
+        b.dim = isFinite(Number(d.bg.dim)) ? Math.max(0, Math.min(0.8, Number(d.bg.dim))) : 0.35;
+        out.bg = b;
       }
       // The home screen used to be fixed above the user's modules: its blocks are now modules,
       // placed once in front of the ones already saved (after that, the user's choices stay).
@@ -120,7 +125,17 @@ window.HD = window.HD || {};
 
     resetPage(key) { delete this.data.pages[key]; this.save(); },
     // Layout only: accent and custom labels are kept.
-    resetAll() { const { accent, accentSet, names, memo } = this.data; this.data = blank(); Object.assign(this.data, { accent, accentSet, names, memo }); this.save(); },
+    resetAll() { const { accent, accentSet, names, memo, bg } = this.data; this.data = blank(); Object.assign(this.data, { accent, accentSet, names, memo }); if (bg) this.data.bg = bg; this.save(); },
+
+    // ---------- home header ----------
+    // Items of the header, created on first use: date left, clock center, chips right.
+    headerItems() {
+      if (!this.data.header) {
+        const it = (type, zone) => ({ ...this.newModule(type, 'all'), zone });
+        this.data.header = { items: [it('h-date', 'left'), it('h-clock', 'center'), it('h-lights', 'right'), it('h-temps', 'right'), it('h-fullscreen', 'right')] };
+      }
+      return this.data.header.items;
+    },
 
     newModule(type, scope) {
       const t = T[type];
@@ -195,6 +210,18 @@ window.HD = window.HD || {};
     }
   };
 
+  const ZONES = ['left', 'center', 'right'];
+  function cleanModule(m) {
+    return {
+      id: typeof m.id === 'string' ? m.id : uid(),
+      type: m.type,
+      title: typeof m.title === 'string' ? m.title : '',
+      w: clamp(m.w, 1, 4), h: clamp(m.h, 1, 4),
+      scope: m.scope === 'room' ? 'room' : 'all',
+      entities: Array.isArray(m.entities) ? m.entities.filter((x) => typeof x === 'string') : null,
+      options: m.options && typeof m.options === 'object' ? { ...m.options } : {}
+    };
+  }
   function clamp(v, lo, hi) { const n = Math.round(Number(v)); return isFinite(n) ? Math.max(lo, Math.min(hi, n)) : lo; }
   function readLocal(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
   function writeLocal(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* private mode */ } }

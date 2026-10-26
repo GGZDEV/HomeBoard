@@ -88,6 +88,7 @@ HD.DemoConnection = class DemoConnection {
       S('sensor.rer_d_le_mee', '0', { friendly_name: 'Le Mée', MonitoredStopVisit: [] }),
       S('calendar.famille', 'off', { friendly_name: 'Famille', message: 'Piscine Léa' }),
       S('calendar.travail', 'off', { friendly_name: 'Travail', message: 'Point équipe' }),
+      S('calendar.info_trafic', 'on', { friendly_name: 'Info trafic', message: 'RER D : travaux' }),
       S('automation.lever_stores', 'on', { friendly_name: 'Ouvrir les stores au lever du soleil', last_triggered: ago(9) }),
       S('automation.extinction', 'on', { friendly_name: 'Tout éteindre à minuit', last_triggered: ago(15) }),
       S('automation.alerte_fuite', 'off', { friendly_name: 'Alerte fuite d\'eau', last_triggered: null }),
@@ -235,6 +236,10 @@ HD.DemoConnection = class DemoConnection {
         E('Anniversaire de Mamie', { date: day(2) }, { date: day(3) }, { description: 'Apporter le gâteau au chocolat.' }),
         E('Dîner chez les Martin', { dateTime: at(3, 20, 0) }, { dateTime: at(3, 23, 0) }, { location: '12 rue des Lilas' }),
         E('Vacances de la Toussaint', { date: day(5) }, { date: day(12) })
+      ],
+      'calendar.info_trafic': [
+        E('RER D : travaux entre Corbeil-Essonnes et Melun, bus de remplacement', { dateTime: at(0, 0, 0) }, { dateTime: at(1, 5, 0) }),
+        E('Ligne D : modification des horaires des trains en soirée', { dateTime: at(1, 21, 0) }, { dateTime: at(2, 3, 0) })
       ],
       'calendar.travail': [
         E('Point équipe', { dateTime: at(0, 9, 30) }, { dateTime: at(0, 10, 0) }, { location: 'Visio' }),

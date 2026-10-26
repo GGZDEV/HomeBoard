@@ -49,6 +49,16 @@ l'étirer, le supprimer ou le remettre (« + Module »). Vos propres modules se 
 faisant défiler. « Revenir à l'écran d'accueil d'origine » remet la disposition du design.
 Réglages › Disposition › « Écran d'accueil tablette » permet de revenir à l'ancien Accueil automatique.
 
+**En-tête de l'accueil** : trois zones (gauche, centre, droite) d'éléments : date, heure, lampes
+allumées, températures, plein écran… Avec le crayon, on les déplace d'une zone à l'autre, et ⚙
+règle la couleur, la taille, la police et le format (date, heure avec ou sans secondes).
+N'importe quel module glissé dans l'en-tête passe en version compacte (météo, prochain événement,
+prochain train, musique…) ; glissé sur la page, il redevient un module complet. ✕ retire un élément,
+« + Module » › « Dans l'en-tête » le remet.
+
+**Fond d'écran** : crayon › Fond (ou Réglages › Fond d'écran) : fonds prêts, couleur au choix ou
+photo (réduite puis enregistrée avec la disposition), avec un réglage d'assombrissement.
+
 ## Pages et modules
 
 Chaque page (Accueil, chaque pièce, Automatisations, Énergie) est une grille de **modules**
@@ -83,7 +93,7 @@ automatiquement à partir des appareils trouvés (les nouveaux appareils apparai
 | **Énergie** | capteurs `power` / `energy` |
 | **Météo** | `weather.*` ; en largeur ≥ 2 ou hauteur ≥ 3, les prévisions des jours suivants ; un toucher ouvre le détail (ressenti, vent, pression, 24 h, 7 jours) |
 | **Calendrier** | `calendar.*` (Google Calendar, Calendrier distant iCal, calendrier local…) : une couleur par calendrier, détail au toucher ; période réglable (aujourd'hui à 30 jours) ; 4 affichages (⚙ › Affichage) : **Compact** (une ligne : heure + titre), **Liste** (horaires, lieu), **Détaillé** (en plus calendrier et début de description), **Semaine** (une colonne par jour, largeur 2 ou plus). Les mêmes réglages existent pour l'Agenda de l'accueil |
-| **Départs train / RER** | prochains départs temps réel IDFM (capteur REST, voir `homeassistant/rer_d_le_mee.yaml`) : minutes restantes, heure, destination, mission, voie, retards et suppressions ; une colonne par direction quand il est large, ou filtré sur une direction |
+| **Départs train / RER** | perturbations de la ligne en tête (suppressions et retards de l'heure, et événements « RER D : … » / « Ligne D : … » de vos calendriers, masqués des agendas) ; prochains départs temps réel IDFM (capteur REST, voir `homeassistant/rer_d_le_mee.yaml`) : minutes restantes, heure, destination, mission, voie, retards et suppressions ; une colonne par direction quand il est large, ou filtré sur une direction |
 | **Spotify / musique** | lecteur `media_player` (Spotify en priorité) : pochette, titre, progression, précédent / lecture / suivant, aléatoire, répétition, volume, choix de l'enceinte (Spotify Connect) et **Playlists** (bibliothèque du lecteur). Sur une ligne : version compacte. Voir *Spotify* plus bas |
 | **Notes** | mémo libre, enregistré automatiquement dans votre compte Home Assistant |
 | **Automatisations** | activer/désactiver `automation.*`, lancer `script.*` |

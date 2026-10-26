@@ -233,6 +233,7 @@
     const typing = document.activeElement;
     if (force !== true && typing && typing.classList && (typing.classList.contains('note') || typing.classList.contains('memo-input'))) { app.renderAfterNote = true; return; }
     document.documentElement.style.setProperty('--accent', L.data.accent);
+    applyBg();
     M.setNames(L.data.names);
     const active = document.activeElement;
     const focusKey = active && active.dataset ? active.dataset.key : null;
@@ -385,15 +386,150 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     const ts = visibleRooms().filter((r) => r.id !== '__autres').map(roomTemp).filter((t) => t != null);
     return avg(ts);
   }
-  function homeClock() {
-    const d = new Date();
-    const day = d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
-    return `<h1 class="home-date">${esc(day.charAt(0).toUpperCase() + day.slice(1))}</h1>
-  <time class="home-clock" datetime="${d.toISOString()}">${esc(d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }))}</time>`;
+  // ---------- home header ----------
+  // Three zones (left / center / right) of items: date, clock, chips, or any module in its header
+  // version. In edit mode items move like modules: dropped on the page they become modules again.
+  const hType = (name, desc, ic) => ({ name, desc, icon: ic, w: 1, h: 1, noEntities: true, headerOnly: true, render: () => '' });
+  Object.assign(T, {
+    'h-date': hType('Date', 'La date du jour, format au choix.', IC.calendar),
+    'h-clock': hType('Heure', 'L\'heure, avec ou sans les secondes.', IC.clock),
+    'h-lights': hType('Lampes allumées', 'Nombre de lampes allumées dans la maison.', IC.bulb),
+    'h-temps': hType('Températures int. / ext.', 'Moyenne intérieure et température extérieure.', IC.thermo),
+    'h-fullscreen': hType('Bouton plein écran', 'Passer en plein écran (si le navigateur le permet).', IC.expand)
+  });
+  const H_FONTS = [['', 'Inter'], ['nunito', 'Arrondie'], ['playfair', 'Élégante'], ['mono', 'Mono'], ['bebas', 'Condensée'], ['caveat', 'Manuscrite']];
+  const FONT_CSS = { nunito: "'Nunito', sans-serif", playfair: "'Playfair Display', Georgia, serif", mono: "'JetBrains Mono', ui-monospace, monospace", bebas: "'Bebas Neue', 'Inter', sans-serif", caveat: "'Caveat', cursive" };
+  const H_SIZES = [['s', 'S', 0.75], ['', 'M', 1], ['l', 'L', 1.3], ['xl', 'XL', 1.7]];
+  const H_BASE = { 'h-date': 30, 'h-clock': 40 };
+  const DATE_FMTS = ['long', 'full', 'short', 'day', 'num'];
+  const cap1 = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  function fmtDate(d, f) {
+    if (f === 'num') return d.toLocaleDateString('fr-FR');
+    const o = f === 'short' ? { weekday: 'short', day: 'numeric', month: 'short' }
+      : f === 'day' ? { weekday: 'long', day: 'numeric' }
+      : f === 'full' ? { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }
+      : { weekday: 'long', day: 'numeric', month: 'long' };
+    return cap1(d.toLocaleDateString('fr-FR', o));
+  }
+  const fmtClock = (d, f) => d.toLocaleTimeString('fr-FR', f === 's' ? { hour: '2-digit', minute: '2-digit', second: '2-digit' } : { hour: '2-digit', minute: '2-digit' });
+
+  const isHome = () => pageKey() === 'home-more';
+  function headerFind(id) { return L.data.header ? L.data.header.items.find((x) => x.id === id) : null; }
+
+  function homeHeader() {
+    const items = L.headerItems();
+    const fixed = app.editing
+      ? `<button class="btn-glass" data-act="bg-open" data-key="bg-open">${icon(IC.palette, 18, 2)} Fond</button>
+         <button class="btn-glass" data-act="add-open" data-key="add-open">${icon(IC.plus, 18, 2)} Module</button>
+         <button class="btn-solid" data-act="edit-toggle" data-key="edit-toggle" aria-label="Terminer la personnalisation">${icon(IC.check, 18, 2.2)} Terminé</button>`
+      : `<button class="card hov round-btn" data-act="edit-toggle" data-key="edit-toggle" aria-label="Personnaliser cette page" title="Personnaliser">${icon(IC.pencil, 19)}</button>`;
+    const zone = (z) => `<div class="hzone hz-${z}" data-hzone="${z}">${items.filter((i) => i.zone === z).map(headerItem).join('')}${z === 'right' ? `<span class="head-fixed">${fixed}</span>` : ''}</div>`;
+    return `<header class="page-head is-home${app.editing ? ' is-editing' : ''}">${zone('left')}${zone('center')}${zone('right')}</header>`;
   }
 
-  // home: no page title, the date on the left and the clock in the middle instead.
-  function header(title, summary, editable, home) {
+  function headerItem(m) {
+    const t = T[m.type];
+    if (!t) return '';
+    const o = m.options || {};
+    const k = (H_SIZES.find((x) => x[0] === (o.hSize || '')) || H_SIZES[1])[2];
+    const style = [`font-size: ${Math.round((H_BASE[m.type] || 15) * k)}px`,
+      /^#[0-9a-f]{6}$/i.test(o.hColor || '') ? '--hc: ' + o.hColor : '',
+      FONT_CSS[o.hFont] ? 'font-family: ' + FONT_CSS[o.hFont] : ''].filter(Boolean).join('; ');
+    let body;
+    try { body = headerChip(m); } catch (e) { body = `<span class="hchip">${icon(t.icon, 18)}${esc(m.title || t.name)}</span>`; }
+    const tools = app.editing ? `<span class="hitem-tools">
+        <button aria-label="Réglages de ${esc(t.name)}" title="Réglages" data-act="mod-config" data-key="${m.id}:hcfg">${icon(IC.gear, 14, 2)}</button>
+        <button aria-label="Retirer ${esc(t.name)} de l'en-tête" title="Retirer" data-act="mod-del" data-key="${m.id}:hdel">${icon(IC.x, 14, 2.2)}</button></span>` : '';
+    return `<div class="hitem ht-${m.type}${o.hColor ? ' has-color' : ''}" data-hitem="${esc(m.id)}" data-mod="${esc(m.id)}" style="${style}">
+      <div class="hitem-body"${app.editing ? ' inert' : ''}>${body}</div>${tools}</div>`;
+  }
+
+  // Header version of each item / module type: one compact line.
+  function headerChip(m) {
+    const W = HD.Modules;
+    const o = m.options || {};
+    const t = T[m.type];
+    const now = new Date();
+    const list = t.noEntities ? [] : L.resolve(m, env(null));
+    const chip = (ic, text, attrs = '') => `<span class="hchip"${attrs}>${ic ? icon(ic, 18) : ''}<span class="hchip-text">${text}</span></span>`;
+    const btnChip = (ic, text, attrs) => `<button class="hchip is-btn" ${attrs}>${ic ? icon(ic, 18) : ''}<span class="hchip-text">${text}</span></button>`;
+    switch (m.type) {
+      case 'h-date': return `<h1 class="home-date" data-date="${esc(o.fmt || 'long')}">${esc(fmtDate(now, o.fmt))}</h1>`;
+      case 'h-clock': return `<time class="home-clock" data-clock="${esc(o.fmt || '')}">${esc(fmtClock(now, o.fmt))}</time>`;
+      case 'h-lights': return chip(IC.bulb, esc(plural(lightsOn(), 'allumé', 'allumés')));
+      case 'h-temps': {
+        const ti = indoorTemp(), te = outdoorTemp();
+        const txt = [ti != null ? 'Int. ' + M.fmtNum(ti) + '°' : '', te != null ? 'Ext. ' + M.fmtNum(te, 0) + '°' : ''].filter(Boolean).join(' · ');
+        return chip(IC.thermo, esc(txt || '—'));
+      }
+      case 'h-fullscreen':
+        return fsSupported() ? `<button class="card hov round-btn" data-act="fullscreen" data-key="fullscreen" aria-label="${fsEl() ? 'Quitter le plein écran' : 'Plein écran'}">${icon(fsEl() ? IC.shrink : IC.expand, 18, 2)}</button>`
+          : (app.editing ? chip(IC.expand, 'Plein écran') : '');
+      case 'weather': case 'home-weather': {
+        const st = m.type === 'weather' ? list[0] : allStates().find((s) => M.domainOf(s.entity_id) === 'weather');
+        if (!st) return chip(IC.cloud, 'Météo');
+        return `<button class="hchip is-btn" data-act="weather-open" data-arg="${esc(st.entity_id)}" data-key="${m.id}:hwx">${W.wxArt(st.state, 22)}<span class="hchip-text"><b>${esc(M.fmtNum(st.attributes.temperature, 0))}°</b> ${esc(M.WEATHER[st.state] || '')}</span></button>`;
+      }
+      case 'temperature': {
+        const ts = list.filter((s) => M.isTemp(s) && M.isAvail(s)).map((s) => Number(s.state));
+        return chip(IC.thermo, ts.length ? esc(M.fmtNum(avg(ts))) + '°' : '—');
+      }
+      case 'climate': {
+        const st = list[0];
+        if (!st) return chip(IC.snow, 'Climat');
+        const cur = st.attributes.current_temperature, tg = targetTemp(st);
+        return chip(IC.snow, [cur != null ? esc(M.fmtNum(cur)) + '°' : '', tg != null ? '→ ' + esc(M.fmtNum(tg)) + '°' : ''].filter(Boolean).join(' '));
+      }
+      case 'lights': {
+        const on = list.filter((s) => s.state === 'on').length;
+        return btnChip(IC.bulb, `${on}/${list.length}`, `data-act="lights-toggle" data-key="${m.id}:hlt" aria-label="${on ? 'Éteindre' : 'Allumer'} ${esc(m.title || 'l\'éclairage')}"`);
+      }
+      case 'devices': return chip(IC.grid, esc(plural(list.filter((s) => M.describe(s).on).length, 'actif', 'actifs')));
+      case 'sensor': case 'energy': {
+        const st = m.type === 'energy' ? (list.find((s) => M.isSensorClass(s, 'power')) || list[0]) : list[0];
+        if (!st) return chip(t.icon, esc(t.name));
+        const u = st.attributes.unit_of_measurement || '';
+        const v = isFinite(Number(st.state)) ? M.fmtNum(Number(st.state)) : st.state;
+        return chip(t.icon, `${esc(m.title || M.shortName(st))} <b>${esc(v)}${u ? ' ' + esc(u) : ''}</b>`);
+      }
+      case 'transit': {
+        const st = list[0];
+        const d = st ? W.departures(st).find((x) => !x.cancelled && x.time > Date.now() - 60000) : null;
+        if (!d) return chip(IC.train, 'Aucun départ');
+        const mins = Math.max(0, Math.round((d.time - Date.now()) / 60000));
+        const line = d.line || W.LINES.C01728;
+        return `<span class="hchip"><span class="line-badge sm" style="background: ${line.color}; color: ${line.fg || '#fff'}">${esc(line.name)}</span><span class="hchip-text"><b>${mins === 0 ? 'À quai' : mins + ' min'}</b> ${esc(d.destination || '')}${d.delay >= 1 ? ` <span class="dep-warn">+${d.delay}</span>` : ''}</span></span>`;
+      }
+      case 'media': {
+        const st = list[0];
+        if (!st) return chip(IC.music, 'Musique');
+        const playing = st.state === 'playing';
+        return `<span class="hchip">${icon(IC.music, 18)}<span class="hchip-text">${esc(st.attributes.media_title || (playing ? 'Lecture' : 'En pause'))}</span>
+          <button class="hchip-mini" data-act="media-cmd" data-arg="play_pause" data-key="${m.id}:hpp" aria-label="${playing ? 'Pause' : 'Lecture'}">${icon(playing ? IC.pause : IC.play, 16, 2)}</button>
+          <button class="hchip-mini" data-act="media-cmd" data-arg="next" data-key="${m.id}:hnx" aria-label="Suivant">${icon(IC.next, 16, 2)}</button></span>`;
+      }
+      case 'calendar': case 'home-agenda': {
+        const cals = m.type === 'calendar' ? list : allStates().filter((s) => M.domainOf(s.entity_id) === 'calendar');
+        const data = cals.length ? calendarFor(cals, Number(o.days) || 7) : { raw: {} };
+        const evs = W.agendaEvents(W.calEvents(cals, data.raw).filter((ev) => ev.end > now), o);
+        app.calEvents = app.calEvents || {};
+        app.calEvents[m.id] = evs;
+        if (!evs.length) return chip(IC.calendar, 'Rien de prévu');
+        const ev = evs[0];
+        const when = ev.allDay ? W.dayTitle(ev.start < now ? now : ev.start) : ev.start <= now ? 'En cours' : (ev.start.toDateString() === now.toDateString() ? '' : W.dayTitle(ev.start) + ' ') + ev.start.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+        return btnChip(IC.calendar, `<b>${esc(when)}</b> ${esc(ev.title)}`, `data-act="event-open" data-arg="${esc(m.id)}|0" data-key="${m.id}:hev"`);
+      }
+      case 'scenes': return `<span class="hchip-group">${list.slice(0, 3).map((s) => btnChip(M.sceneIcon(M.shortName(s)), esc(M.shortName(s)), `data-act="scene" data-arg="${esc(s.entity_id)}" data-key="${m.id}:hsc:${esc(s.entity_id)}"`)).join('')}</span>`;
+      case 'home-scenes': return btnChip(IC.power, 'Tout éteindre', `data-act="all-off" data-arg="all" data-key="${m.id}:hoff"`);
+      case 'notes': return chip(IC.note, esc((String(o.text || '').split('\n').find((l) => l.trim()) || 'Notes').slice(0, 40)));
+      case 'home-notes': return chip(IC.note, esc(plural(memoItems().filter((it) => !it.done).length, 'note', 'notes')));
+      case 'rooms': case 'home-rooms': return btnChip(IC.home, esc(plural(visibleRooms().length, 'pièce', 'pièces') + ' · ' + plural(lightsOn(), 'allumé', 'allumés')), `data-act="tab" data-arg="rooms" data-key="${m.id}:hrooms"`);
+      case 'automations': return chip(IC.robot, esc(plural(list.filter((s) => s.state === 'on').length, 'active', 'actives')));
+      default: return chip(t.icon, esc(m.title || t.name));
+    }
+  }
+
+  function header(title, summary, editable) {
     const t = outdoorTemp();
     const fs = fsSupported() && !app.editing
       ? `<button class="card hov round-btn" data-act="fullscreen" data-key="fullscreen" aria-label="${fsEl() ? 'Quitter le plein écran' : 'Plein écran'}" title="${fsEl() ? 'Quitter le plein écran' : 'Plein écran'}">${icon(fsEl() ? IC.shrink : IC.expand, 18, 2)}</button>` : '';
@@ -409,12 +545,12 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       }
     }
     return `
-<header class="page-head${home ? ' is-home' : ''}">
-  ${home ? homeClock() : `<div class="titles"><h1>${esc(title)}</h1><p class="muted">${esc(summary)}</p></div>`}
+<header class="page-head">
+  <div class="titles"><h1>${esc(title)}</h1><p class="muted">${esc(summary)}</p></div>
   <div class="head-actions">
     ${chips}
     ${fs}
-    ${editable && app.editing ? `<button class="btn-glass" data-act="add-open" data-key="add-open">${icon(IC.plus, 18, 2)} Module</button>` : ''}
+    ${editable && app.editing ? `<button class="btn-glass" data-act="bg-open" data-key="bg-open">${icon(IC.palette, 18, 2)} Fond</button><button class="btn-glass" data-act="add-open" data-key="add-open">${icon(IC.plus, 18, 2)} Module</button>` : ''}
     ${editable ? `<button class="${app.editing ? 'btn-solid' : 'card hov round-btn'}" data-act="edit-toggle" data-key="edit-toggle" aria-label="${app.editing ? 'Terminer la personnalisation' : 'Personnaliser cette page'}" title="Personnaliser">${app.editing ? icon(IC.check, 18, 2.2) + ' Terminé' : icon(IC.pencil, 19)}</button>` : ''}
   </div>
 </header>`;
@@ -433,7 +569,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     'home-weather': homeType('Météo (accueil)', 'Météo actuelle, 5 prochaines heures, 4 jours, lever et coucher du soleil.', IC.cloud, 1, 4, () => heroWeather()),
     'home-rooms': homeType('Pièces et lumières', 'Chaque pièce avec sa température et ses lampes à allumer d\'un toucher.', IC.home, 2, 3, () => heroRooms()),
     'home-scenes': homeType('Raccourcis', '« Tout éteindre » et vos trois premières scènes.', IC.spark, 2, 1, () => heroScenes()),
-    'home-agenda': homeType('Agenda (accueil)', 'Les prochains jours de vos calendriers, avec les alertes train ; plusieurs affichages.', IC.calendar, 1, 2, (m) => heroAgenda(m)),
+    'home-agenda': homeType('Agenda (accueil)', 'Les prochains jours de vos calendriers ; plusieurs affichages.', IC.calendar, 1, 2, (m) => heroAgenda(m)),
     'home-notes': homeType('Liste de notes', 'Une liste à cocher partagée (courses, rappels…).', IC.note, 1, 2, () => heroNotes())
   });
 
@@ -543,25 +679,12 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     const id = m ? m.id : 'hero-agenda';
     const cals = allStates().filter((s) => M.domainOf(s.entity_id) === 'calendar');
     const data = cals.length ? calendarFor(cals, days) : { raw: {} };
-    const events = W.calEvents(cals, data.raw).filter((ev) => ev.end > new Date());
+    // Traffic info ("RER D : …") belongs to the train module: hidden here unless asked for.
+    const events = W.agendaEvents(W.calEvents(cals, data.raw).filter((ev) => ev.end > new Date()), o);
     app.calEvents = app.calEvents || {};
     app.calEvents[id] = events;
-    // Real-time train alert (cancellations / delays in the next hour), from the IDFM sensor.
-    const tr = allStates().find((s) => M.domainOf(s.entity_id) === 'sensor' && s.attributes.MonitoredStopVisit);
-    let alert = '';
-    if (tr) {
-      const soon = W.departures(tr).filter((d) => d.time < Date.now() + 3600000);
-      const cancelled = soon.filter((d) => d.cancelled).length;
-      const maxDelay = Math.max(0, ...soon.filter((d) => !d.cancelled).map((d) => d.delay));
-      if (cancelled || maxDelay >= 3) {
-        const line = (soon[0] && soon[0].line) || W.LINES.C01728;
-        const what = [cancelled ? plural(cancelled, 'train supprimé', 'trains supprimés') : '', maxDelay >= 3 ? 'retards jusqu\'à +' + maxDelay + ' min' : ''].filter(Boolean).join(' · ');
-        alert = `<div class="agenda-alert">${icon(WARN_PATH, 20, 2)}
-          <span class="stack"><span class="cal-title">${esc(line.mode + ' ' + line.name)} · ${esc(M.shortName(tr))} : ${esc(what)}</span><span class="muted small">Dans l'heure qui vient</span></span></div>`;
-      }
-    }
-    let list = alert + W.calBody(events, { id, view: o.view, days, multi: cals.length > 1, narrow: !m || m.w === 1 });
-    if (!events.length && !alert) {
+    let list = W.calBody(events, { id, view: o.view, days, multi: cals.length > 1, narrow: !m || m.w === 1 });
+    if (!events.length) {
       list = `<p class="muted small">${!cals.length ? 'Aucun calendrier : connectez Google Agenda dans Home Assistant (« Calendrier distant » ou « Google Calendar »).' : data.loading ? 'Chargement…' : days === 1 ? "Rien de prévu aujourd'hui." : 'Rien de prévu sur ' + days + ' jours.'}</p>`;
     }
     return `<section class="card hero-card hero-agenda" aria-label="Agenda">
@@ -648,7 +771,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       (app.editing ? `<button class="mod add-tile" style="grid-column: span 1; grid-row: span 2" data-act="add-open" data-key="add-tile">${icon(IC.plus, 26, 2)}<span>Ajouter un module</span></button>` : '');
     const hint = app.editing ? `<p class="edit-hint muted small">${touchFirst() ? 'Maintenez' : 'Attrapez'} un module puis glissez-le sur un autre pour les échanger · étirez son bord droit, son bord bas ou son coin pour le redimensionner · ${icon(IC.palette, 14)} couleurs · ${icon(IC.gear, 14)} appareils, noms et titre${L.isCustom(key) ? ` · <button class="link-btn" data-act="page-reset">${key === 'home-more' ? 'Revenir à l\'écran d\'accueil d\'origine' : 'Revenir à la disposition automatique'}</button>` : ''}</p>` : '';
     // Home: the design's blocks fill the first screen (4 rows), the user's own modules follow below.
-    const head = key === 'home-more' ? header('', '', true, true) : header(title, pageSummary(key, room, mods), true);
+    const head = key === 'home-more' ? homeHeader() : header(title, pageSummary(key, room, mods), true);
     return head + tabs + hint +
       (mods.length || app.editing
         ? `<div class="mods" data-scroll="page:${esc(key)}">${body}</div>`
@@ -751,6 +874,76 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
   }
 
   // ----- modals -----
+  // ---------- background ----------
+  const grad = (a, b, c) => `${c} radial-gradient(120% 90% at 15% 0%, ${a} 0%, ${b} 45%, ${c} 100%) no-repeat fixed`;
+  const BG_PRESETS = [
+    ['chaud', 'Chaud', grad('#8A735F', '#5E4B3E', '#3B3640')],
+    ['nuit', 'Nuit', grad('#2F4A7A', '#1B2740', '#10141F')],
+    ['ocean', 'Océan', grad('#2E7C8A', '#1A4A57', '#0E242C')],
+    ['foret', 'Forêt', grad('#4F6B4A', '#2E4234', '#1A231D')],
+    ['aurore', 'Aurore', grad('#8A5A8F', '#4E3866', '#241B33')],
+    ['ardoise', 'Ardoise', grad('#5B6270', '#3A3F48', '#22252B')],
+    ['noir', 'Noir', '#000000']
+  ];
+  // Mix a #rrggbb color with white (t > 0) or black (t < 0).
+  function shade(hex, t) {
+    const n = parseInt(hex.slice(1), 16), to = t > 0 ? 255 : 0, k = Math.abs(t);
+    const c = [n >> 16, (n >> 8) & 255, n & 255].map((v) => Math.round(v + (to - v) * k));
+    return '#' + c.map((v) => v.toString(16).padStart(2, '0')).join('');
+  }
+  function bgCss(b) {
+    b = b || {};
+    if (b.image) {
+      const dim = b.dim != null ? b.dim : 0.35;
+      return `#000 linear-gradient(rgba(0,0,0,${dim}), rgba(0,0,0,${dim})), url("${b.image.replace(/"/g, '%22')}") center / cover no-repeat fixed`;
+    }
+    if (b.color) return grad(shade(b.color, 0.25), b.color, shade(b.color, -0.55));
+    const p = BG_PRESETS.find((x) => x[0] === b.preset);
+    return p ? p[2] : '';
+  }
+  function applyBg() {
+    const css = bgCss(L.data.bg);
+    if (css) document.body.style.background = css; else document.body.style.removeProperty('background');
+  }
+  function setBg(b) { L.data.bg = b; L.save(); applyBg(); render(); }
+
+  function bgModal() {
+    const b = L.data.bg || {};
+    const cur = b.image ? 'image' : b.color ? 'color' : b.preset || 'chaud';
+    const body = `
+      <div class="bg-grid">${BG_PRESETS.map(([id, name, css]) => `<button class="bg-swatch${cur === id ? ' is-on' : ''}" aria-pressed="${cur === id}" data-act="bg-preset" data-arg="${id}" data-key="bg:${id}">
+        <span class="bg-prev" style="background: ${css.replace(' fixed', '')}"></span><span>${name}</span></button>`).join('')}
+      </div>
+      <div class="field-row"><span class="field-label">Couleur</span>
+        <label class="btn-glass sm color-pick${cur === 'color' ? ' is-on' : ''}"><input type="color" value="${esc(b.color || '#5E4B3E')}" data-act="bg-color" data-key="bg-color"> Choisir une couleur</label></div>
+      <div class="field-row"><span class="field-label">Photo</span>
+        <label class="btn-glass sm">${icon(IC.upload, 16, 2)} ${b.image ? 'Changer la photo' : 'Choisir une photo'}<input type="file" accept="image/*" id="bg-file" hidden></label>
+        ${b.image ? `<button class="btn-glass sm" data-act="bg-preset" data-arg="chaud" data-key="bg-noimg">Retirer</button>` : ''}</div>
+      ${b.image ? `<div class="field-row"><span class="field-label">Assombrir</span><input type="range" class="dim-range" min="0" max="80" value="${Math.round((b.dim != null ? b.dim : 0.35) * 100)}" data-act="bg-dim" data-key="bg-dim" aria-label="Assombrir la photo"></div>` : ''}
+      <p class="muted small">Le fond est enregistré avec votre disposition (le même sur tous vos écrans). La photo est réduite avant d'être enregistrée.</p>`;
+    return modalFrame('Fond d\'écran', body, '<span class="grow"></span><button class="btn-solid" data-act="modal-close" data-key="modal-close">Terminé</button>');
+  }
+
+  // A picture becomes a JPEG of at most 1920 px, so it stays light to store and sync.
+  function loadBgImage(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const k = Math.min(1, 1920 / Math.max(img.width, img.height));
+        const cv = document.createElement('canvas');
+        cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+        cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+        const b = L.data.bg || {};
+        setBg({ image: cv.toDataURL('image/jpeg', 0.8), dim: b.dim != null ? b.dim : 0.35 });
+      };
+      img.onerror = () => showToast('Image illisible.');
+      img.src = String(reader.result);
+    };
+    reader.onerror = () => showToast('Image illisible.');
+    reader.readAsDataURL(file);
+  }
+
   // Pictures from HA (cover art, library thumbnails) are relative to the server; Spotify's are absolute.
   function mediaUrl(u) {
     if (!u || /^(https?:|data:)/.test(u) || !app.conn || isDemo()) return u || '';
@@ -803,11 +996,17 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     if (md.kind === 'weather') return weatherModal(md.entity);
     if (md.kind === 'event') return eventModal(md.ev);
     if (md.kind === 'media') return mediaModal(md);
+    if (md.kind === 'bg') return bgModal();
     if (md.kind === 'add') {
       const e = env(pageRoom());
       const scope = pageRoom() ? 'room' : 'all';
       title = 'Ajouter un module';
-      body = `<div class="type-grid">${Object.entries(T).map(([type, t]) => {
+      // Header-only items (date, clock…) missing from the home header can be put back.
+      const have = isHome() ? L.headerItems().map((x) => x.type) : [];
+      const hMissing = isHome() ? Object.entries(T).filter(([type, t]) => t.headerOnly && !have.includes(type)) : [];
+      const hSection = hMissing.length ? `<h3 class="field-h">Dans l'en-tête</h3><div class="type-grid">${hMissing.map(([type, t]) => `<button class="type-card hov" data-act="add-header" data-arg="${type}" data-key="addh:${type}">
+          <span class="scene-ic">${icon(t.icon, 18, 1.9)}</span><span class="stack"><span class="type-name">${t.name}</span><span class="muted small">${esc(t.desc)}</span></span></button>`).join('')}</div><h3 class="field-h">Sur la page</h3>` : '';
+      body = hSection + `<div class="type-grid">${Object.entries(T).filter(([, t]) => !t.headerOnly).map(([type, t]) => {
         const n = t.noEntities ? null : t.manual ? null : L.resolve({ type, scope, entities: null }, e).length;
         const found = t.manual ? 'À choisir' : n == null ? '' : n ? plural(n, 'trouvé', 'trouvés') + (scope === 'room' ? ' ici' : '') : 'Rien trouvé' + (scope === 'room' ? ' ici' : '');
         return `<button class="type-card hov" data-act="add-type" data-arg="${type}" data-key="add:${type}">
@@ -897,7 +1096,34 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
           <button class="btn-solid" data-act="modal-save" data-key="modal-save">Enregistrer</button>`;
         return modalFrame(title, body, foot);
       }
-      body = `
+      // Item of the home header: its look (color, size, font, date / clock format).
+      let hStyle = '';
+      if (md.inHeader) {
+        const o = d.options;
+        const hc = o.hColor || '';
+        const now = new Date();
+        hStyle = `<h3 class="field-h">Dans l'en-tête</h3>
+        <div class="field-row"><span class="field-label">Couleur</span>
+          <div class="row wrap swatches">
+            <button type="button" class="tone tone-default${!hc ? ' is-on' : ''}" aria-pressed="${!hc}" aria-label="Couleur par défaut" title="Par défaut" data-act="draft-hcolor" data-arg="" data-key="hc:"><span style="background: #fff"></span></button>
+            ${['#FFFFFF', '#F5F0E6'].concat(HD.Modules.ACCENTS).filter((c, i, a) => a.indexOf(c) === i).slice(1).map((c) => `<button type="button" class="tone${hc === c ? ' is-on' : ''}" aria-pressed="${hc === c}" aria-label="Couleur ${c}" data-act="draft-hcolor" data-arg="${c}" data-key="hc:${c}"><span style="background: ${c}"></span></button>`).join('')}
+            <label class="tone tone-custom" title="Autre couleur"><input type="color" value="${esc(hc || '#ffffff')}" data-act="draft-hcolor-pick" data-key="hc-pick" aria-label="Autre couleur"><span>+</span></label>
+          </div></div>
+        <div class="field-row"><span class="field-label">Taille</span>${seg('draft-hsize', o.hSize || '', H_SIZES.map(([v, l]) => [v, l]))}</div>
+        <div class="field-row"><span class="field-label">Police</span>${seg('draft-hfont', o.hFont || '', H_FONTS.map(([v, l]) => [v, `<span style="font-family: ${FONT_CSS[v] || 'inherit'}">${l}</span>`]))}</div>
+        ${d.type === 'h-date' ? `<div class="field-row"><span class="field-label">Format</span>${seg('draft-hfmt', o.fmt || 'long', DATE_FMTS.map((f) => [f, esc(fmtDate(now, f))]))}</div>` : ''}
+        ${d.type === 'h-clock' ? `<div class="field-row"><span class="field-label">Format</span>${seg('draft-hfmt', o.fmt || '', [['', esc(fmtClock(now, ''))], ['s', esc(fmtClock(now, 's'))]])}</div>` : ''}
+        ${t.headerOnly ? '' : '<p class="muted small">Glissé sur la page, il redevient un module complet avec les réglages ci-dessous.</p>'}`;
+      }
+      if (md.inHeader && t.headerOnly) {
+        body = hStyle;
+        foot = `<button class="btn-glass danger" data-act="mod-del" data-arg="${esc(d.id)}" data-key="modal-del">${icon(IC.x, 16, 2)} Retirer</button>
+          <span class="grow"></span>
+          <button class="btn-glass" data-act="modal-close" data-key="modal-close">Annuler</button>
+          <button class="btn-solid" data-act="modal-save" data-key="modal-save">Enregistrer</button>`;
+        return modalFrame(title, body, foot);
+      }
+      body = `${hStyle}
         <label class="field"><span>Titre</span><input type="text" value="${esc(d.title)}" placeholder="${esc(t.name)}" data-act="draft-title" data-key="draft-title"></label>
         ${room && !t.noEntities ? `<div class="field-row"><span class="field-label">Portée</span>${seg('draft-scope', d.scope, [['room', 'Cette pièce'], ['all', 'Toute la maison']])}</div>` : ''}
         <div class="field-row"><span class="field-label">Largeur</span>${seg('draft-w', String(d.w), [['1', '1'], ['2', '2'], ['3', '3'], ['4', '4']])}</div>
@@ -909,7 +1135,9 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
           return `<div class="field-row"><span class="field-label">Direction</span>${seg('draft-dir', d.options.direction || '', [['', 'Toutes']].concat(dirs.map((x) => [x, esc(x)])))}</div>
             <p class="muted small">« Toutes » : en largeur 2 ou plus, une colonne par direction.</p>`;
         })() : ''}
-        ${d.type === 'calendar' || d.type === 'home-agenda' ? `<div class="field-row"><span class="field-label">Affichage</span>${seg('draft-view', d.options.view || 'list', HD.Modules.CAL_VIEWS)}</div>
+        ${d.type === 'calendar' || d.type === 'home-agenda' ? `<div class="field-row"><span class="field-label">Infos trafic</span>${seg('draft-traffic', d.options.traffic ? 'on' : '', [['', 'Masquées'], ['on', 'Affichées']])}</div>
+          <p class="muted small">Les événements « RER D : … », « Ligne D : … » de vos calendriers s'affichent dans le module Départs train / RER.</p>
+          <div class="field-row"><span class="field-label">Affichage</span>${seg('draft-view', d.options.view || 'list', HD.Modules.CAL_VIEWS)}</div>
           <p class="muted small">Compact : une ligne par événement (heure + titre). Liste : horaires et lieu. Détaillé : en plus le calendrier et le début de la description. Semaine : une colonne par jour (largeur 2 ou plus, 7 jours au maximum).</p>
           <div class="field-row"><span class="field-label">Période</span>${seg('draft-days', String(d.options.days || 7), [['1', "Aujourd'hui"], ['3', '3 j'], ['7', '7 j'], ['14', '14 j'], ['30', '30 j']])}</div>` : ''}
         ${colors}
@@ -1093,6 +1321,15 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
   </section>
 
   <section class="list-section">
+    <h2>Fond d'écran</h2>
+    <div class="card list-item">
+      <span class="bg-prev sm" style="background: ${(bgCss(L.data.bg) || BG_PRESETS[0][2]).replace(' fixed', '')}"></span>
+      <span class="stack grow"><span>Couleur ou photo derrière le tableau de bord</span><span class="muted small">Aussi accessible avec le crayon › Fond.</span></span>
+      <button class="btn-glass sm" data-act="bg-open" data-key="bg-open">Changer</button>
+    </div>
+  </section>
+
+  <section class="list-section">
     <h2>Couleur d'accent par défaut</h2>
     <p class="muted small">Chaque module peut avoir sa propre couleur (⚙ en mode personnalisation).</p>
     <div class="row wrap">${ACCENTS.map((c) => `<button class="tone${L.data.accent === c ? ' is-on' : ''}" aria-label="Accent ${c}" aria-pressed="${L.data.accent === c}" data-act="accent" data-arg="${c}" data-key="accent:${c}"><span style="background: ${c}"></span></button>`).join('')}</div>
@@ -1120,8 +1357,8 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     if (!host) return null;
     const room = pageRoom();
     const e = env(room);
-    const m = L.modules(pageKey(), e).find((x) => x.id === host.dataset.mod);
-    return m ? { m, list: L.resolve(m, e) } : null;
+    const m = L.modules(pageKey(), e).find((x) => x.id === host.dataset.mod) || (isHome() && headerFind(host.dataset.mod));
+    return m ? { m, list: L.resolve(m, m.zone ? env(null) : e) } : null;
   }
 
   function editPage(fn) {
@@ -1136,9 +1373,10 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
   function moduleIndex(mods, id) { return mods.findIndex((x) => x.id === id); }
 
   function openConfig(id, only) {
-    const m = L.modules(pageKey(), env(pageRoom())).find((x) => x.id === id);
+    const inHeader = isHome() && !!headerFind(id);
+    const m = inHeader ? headerFind(id) : L.modules(pageKey(), env(pageRoom())).find((x) => x.id === id);
     if (!m) return;
-    app.modal = { kind: 'config', id, only: only || null, draft: JSON.parse(JSON.stringify(m)), search: '', names: { ...L.data.names } };
+    app.modal = { kind: 'config', id, inHeader, only: only || null, draft: JSON.parse(JSON.stringify(m)), search: '', names: { ...L.data.names } };
     render();
   }
 
@@ -1202,6 +1440,11 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     // layout editing
     'edit-toggle'() { app.editing = !app.editing; render(); },
     'add-open'() { app.modal = { kind: 'add' }; render(); },
+    'add-header'(type) {
+      const zone = type === 'h-date' ? 'left' : type === 'h-clock' ? 'center' : 'right';
+      L.headerItems().push({ ...L.newModule(type, 'all'), zone });
+      app.modal = null; L.save(); render();
+    },
     'add-type'(type) {
       const scope = pageRoom() ? 'room' : 'all';
       const m = L.newModule(type, scope);
@@ -1217,6 +1460,11 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     'mod-del'(arg, el) {
       const id = arg || el.closest('[data-mod]').dataset.mod;
       app.modal = null;
+      if (isHome() && headerFind(id)) {
+        L.data.header.items = L.data.header.items.filter((x) => x.id !== id);
+        L.save(); render();
+        return;
+      }
       editPage((mods) => { const i = moduleIndex(mods, id); if (i >= 0) mods.splice(i, 1); });
     },
     'page-reset'(arg) {
@@ -1282,7 +1530,14 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       showToast('Lecture : ' + c.title);
       render();
     },
+    'bg-open'() { app.modal = { kind: 'bg' }; render(); },
+    'bg-preset'(arg) { setBg({ preset: arg }); },
+    'draft-hcolor'(arg) { if (arg) app.modal.draft.options.hColor = arg; else delete app.modal.draft.options.hColor; render(); },
+    'draft-hsize'(arg) { if (arg) app.modal.draft.options.hSize = arg; else delete app.modal.draft.options.hSize; render(); },
+    'draft-hfont'(arg) { if (arg) app.modal.draft.options.hFont = arg; else delete app.modal.draft.options.hFont; render(); },
+    'draft-hfmt'(arg) { if (arg) app.modal.draft.options.fmt = arg; else delete app.modal.draft.options.fmt; render(); },
     'draft-view'(arg) { app.modal.draft.options.view = arg; render(); },
+    'draft-traffic'(arg) { if (arg) app.modal.draft.options.traffic = true; else delete app.modal.draft.options.traffic; render(); },
     'draft-days'(arg) { app.modal.draft.options.days = Number(arg); render(); },
     'draft-dir'(arg) {
       if (arg) app.modal.draft.options.direction = arg;
@@ -1295,7 +1550,15 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       const names = {};
       for (const [k, v] of Object.entries(app.modal.names)) if (v && v.trim()) names[k] = v.trim();
       L.data.names = names;
+      const inHeader = app.modal.inHeader;
       app.modal = null;
+      if (inHeader) {
+        const items = L.headerItems();
+        const i = moduleIndex(items, d.id);
+        if (i >= 0) items[i] = d;
+        L.save(); render();
+        return;
+      }
       editPage((mods) => { const i = moduleIndex(mods, d.id); if (i >= 0) mods[i] = d; });
     },
 
@@ -1462,6 +1725,14 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       render();
     } else if (act === 'outdoor') {
       L.data.outdoor = t.value; L.save(); render();
+    } else if (act === 'draft-hcolor-pick') {
+      app.modal.draft.options.hColor = t.value; render();
+    } else if (act === 'bg-color') {
+      setBg({ color: t.value });
+    } else if (act === 'bg-dim') {
+      setBg({ ...(L.data.bg || {}), dim: Number(t.value) / 100 });
+    } else if (t.id === 'bg-file' && t.files[0]) {
+      loadBgImage(t.files[0]);
     } else if (t.id === 'import-file' && t.files[0]) {
       // FileReader rather than File.text(): works on older Android browsers.
       const reader = new FileReader();
@@ -1550,7 +1821,10 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     pending = null;
     if (!host.isConnected) return; // redrawn meanwhile
     const sc = scroller(host);
-    gesture = { kind: 'move', host, id: host.dataset.mod, x0: p.x0, y0: p.y0, x: p.x, y: p.y, sc, st0: sc ? sc.scrollTop : window.scrollY, target: null, pid: p.pid };
+    const fromHeader = !!host.dataset.hitem;
+    const hm = fromHeader ? headerFind(host.dataset.hitem) : null;
+    gesture = { kind: 'move', host, id: host.dataset.mod, x0: p.x0, y0: p.y0, x: p.x, y: p.y, sc, st0: sc ? sc.scrollTop : window.scrollY, drop: null, pid: p.pid,
+      fromHeader, headerOnly: !!(hm && T[hm.type] && T[hm.type].headerOnly) };
     app.dragging = true;
     host.classList.add('is-moving');
     document.body.classList.add('is-gesture');
@@ -1577,14 +1851,59 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     const g = gesture;
     const scrolled = (g.sc ? g.sc.scrollTop : window.scrollY) - g.st0;
     g.host.style.transform = `translate(${g.x - g.x0}px, ${g.y - g.y0 + scrolled}px)`;
+    // Where it would land: a header item (before / after it), the end of a header zone,
+    // a page module (swap, or insert when coming from the header) or the end of the page.
     const under = document.elementFromPoint(g.x, g.y);
-    let t = under && under.closest('[data-mod]');
-    if (t && (t === g.host || t.parentElement !== g.host.parentElement)) t = null;
-    if (t !== g.target) {
-      if (g.target) g.target.classList.remove('is-drop-target');
-      if (t) t.classList.add('is-drop-target');
-      g.target = t;
+    let drop = null;
+    if (under) {
+      const hi = under.closest('[data-hitem]');
+      const hz = under.closest('[data-hzone]');
+      const pm = under.closest('.mods [data-mod]');
+      const grid = under.closest('.mods');
+      if (hi && hi !== g.host) {
+        const r = hi.getBoundingClientRect();
+        drop = { kind: 'head-item', el: hi, zone: hi.closest('[data-hzone]').dataset.hzone, before: g.x < r.left + r.width / 2 };
+      } else if (hz) drop = { kind: 'head-zone', el: hz, zone: hz.dataset.hzone };
+      else if (pm && pm !== g.host) drop = { kind: 'page-mod', el: pm };
+      else if (grid && g.fromHeader) drop = { kind: 'page-end', el: grid };
     }
+    if (drop && drop.kind.startsWith('page') && g.headerOnly) drop = null; // date, clock… stay in the header
+    const same = (a, b) => (a && b ? a.el === b.el && a.before === b.before : a === b);
+    if (!same(drop, g.drop)) {
+      if (g.drop) g.drop.el.classList.remove('is-drop-target', 'drop-before', 'drop-after');
+      if (drop) drop.el.classList.add('is-drop-target', ...(drop.kind === 'head-item' ? [drop.before ? 'drop-before' : 'drop-after'] : []));
+      g.drop = drop;
+    }
+  }
+
+  // Apply a move: page ↔ page swaps; anything else takes the module out and puts it at the new place.
+  function applyDrop(g) {
+    const d = g.drop;
+    const pageMods = L.materialize(pageKey(), env(pageRoom()));
+    const items = isHome() ? L.headerItems() : [];
+    if (!g.fromHeader && d.kind === 'page-mod') {
+      const i = moduleIndex(pageMods, g.id), j = moduleIndex(pageMods, d.el.dataset.mod);
+      if (i >= 0 && j >= 0) [pageMods[i], pageMods[j]] = [pageMods[j], pageMods[i]];
+      L.save(); render();
+      return;
+    }
+    const from = g.fromHeader ? items : pageMods;
+    const i = moduleIndex(from, g.id);
+    if (i < 0) { render(); return; }
+    const m = from.splice(i, 1)[0];
+    if (d.kind === 'head-item' || d.kind === 'head-zone') {
+      m.zone = d.zone;
+      let at;
+      if (d.kind === 'head-item') { const j = moduleIndex(items, d.el.dataset.hitem); at = j < 0 ? items.length : d.before ? j : j + 1; }
+      else { let last = -1; items.forEach((x, k) => { if (x.zone === d.zone) last = k; }); at = last >= 0 ? last + 1 : items.length; }
+      items.splice(at, 0, m);
+      if (!g.fromHeader) showToast((T[m.type] ? T[m.type].name : 'Module') + " est maintenant dans l'en-tête.");
+    } else {
+      delete m.zone;
+      const j = d.kind === 'page-mod' ? moduleIndex(pageMods, d.el.dataset.mod) : -1;
+      pageMods.splice(j >= 0 ? j : pageMods.length, 0, m);
+    }
+    L.save(); render();
   }
 
   function endGesture(commit) {
@@ -1600,12 +1919,8 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     if (g.ghost) g.ghost.remove();
     if (g.kind === 'resize' && commit && (g.w !== g.w0 || g.h !== g.h0)) {
       editPage((mods) => { const m = mods[moduleIndex(mods, g.id)]; if (m) { m.w = g.w; m.h = g.h; } });
-    } else if (g.kind === 'move' && commit && g.target) {
-      const to = g.target.dataset.mod;
-      editPage((mods) => {
-        const i = moduleIndex(mods, g.id), j = moduleIndex(mods, to);
-        if (i >= 0 && j >= 0) [mods[i], mods[j]] = [mods[j], mods[i]];
-      });
+    } else if (g.kind === 'move' && commit && g.drop) {
+      applyDrop(g);
     } else {
       render();
     }
@@ -1696,11 +2011,9 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
   // Every second, without redrawing the page: the home clock (even while a dialog is open
   // or a note is being typed) and the music progress bars.
   setInterval(() => {
-    const clock = $app.querySelector('.home-clock');
-    if (clock) {
-      const now = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-      if (clock.textContent !== now) clock.textContent = now;
-    }
+    const now = new Date();
+    $app.querySelectorAll('[data-clock]').forEach((el) => { const v = fmtClock(now, el.dataset.clock); if (el.textContent !== v) el.textContent = v; });
+    $app.querySelectorAll('[data-date]').forEach((el) => { const v = fmtDate(now, el.dataset.date); if (el.textContent !== v) el.textContent = v; });
     $app.querySelectorAll('[data-media-pos]').forEach((el) => {
       if (el.dataset.playing !== '1') return;
       const dur = Number(el.dataset.dur);

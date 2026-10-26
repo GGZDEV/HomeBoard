@@ -378,6 +378,13 @@ window.HD = window.HD || {};
     return hm(ev.start) + ' – ' + (sameDay ? hm(ev.end) : shortDate(ev.end) + ' ' + hm(ev.end));
   }
 
+  // Traffic info published as calendar events ("RER D : travaux…", "Ligne D : modification…"):
+  // the train module shows them; agendas hide them unless the module asks for them (option "traffic").
+  const WARN_PATH = 'M12 3 2 20h20z M12 10v4 M12 17v.5';
+  const TRAFFIC_RE = /^\s*(RER|Ligne|Transilien|Trains?|TER|M[ée]tro|Tram|Bus)\b[^:]{0,24}:/i;
+  const isTraffic = (ev) => TRAFFIC_RE.test(ev.title);
+  const agendaEvents = (events, o) => (o && o.traffic ? events : events.filter((ev) => !isTraffic(ev)));
+
   // Display modes (option "view"), from the densest to the most detailed. "Semaine" needs width 2+.
   const CAL_VIEWS = [['compact', 'Compact'], ['list', 'Liste'], ['detail', 'Détaillé'], ['week', 'Semaine']];
   const cleanDesc = (s) => String(s || '').replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 220);
@@ -428,7 +435,7 @@ window.HD = window.HD || {};
   function calendar(m, list, c) {
     const days = Number(m.options && m.options.days) || 7;
     const data = c.calendar(list, days);
-    const events = calEvents(list, data.raw).filter((ev) => ev.end > new Date());
+    const events = agendaEvents(calEvents(list, data.raw).filter((ev) => ev.end > new Date()), m.options);
     c.rememberEvents(m.id, events);
     const legend = list.length > 1 && m.w > 1
       ? list.map((st, i) => `<span class="cal-legend"><i style="background: ${CAL_COLORS[i % CAL_COLORS.length]}"></i>${esc(M.shortName(st))}</span>`).join('') : '';
@@ -487,6 +494,34 @@ window.HD = window.HD || {};
     return [...new Set(departures(st).map((d) => d.direction || d.destination).filter(Boolean))];
   }
 
+  // Disruptions for the module's line: cancellations / delays within the hour (from the departures)
+  // and the traffic events of the HA calendars ("RER D : travaux…"). Each event opens its detail.
+  function trafficInfo(m, line, deps, c) {
+    const out = [];
+    const soon = deps.filter((d) => d.time < Date.now() + 3600000);
+    const cancelled = soon.filter((d) => d.cancelled).length;
+    const maxDelay = Math.max(0, ...soon.filter((d) => !d.cancelled).map((d) => d.delay));
+    if (cancelled || maxDelay >= 3) {
+      const what = [cancelled ? plural(cancelled, 'train supprimé', 'trains supprimés') : '', maxDelay >= 3 ? 'retards jusqu\'à +' + maxDelay + ' min' : ''].filter(Boolean).join(' · ');
+      out.push(`<div class="traffic-item is-live">${icon(WARN_PATH, 16, 2)}<span class="stack"><span class="traffic-title">${esc(what)}</span><span class="muted small">Dans l'heure qui vient</span></span></div>`);
+    }
+    const cals = c.index ? [...c.index.visible].map((id) => c.states.get(id)).filter((s) => s && M.domainOf(s.entity_id) === 'calendar') : [];
+    if (cals.length && c.calendar) {
+      const data = c.calendar(cals, 3);
+      const mine = new RegExp('^\\s*(RER|Ligne|Transilien)\\s*' + line.name + '\\b', 'i');
+      const now = new Date();
+      const evs = calEvents(cals, data.raw).filter((ev) => ev.end > now && isTraffic(ev) && mine.test(ev.title));
+      c.rememberEvents(m.id + ':traffic', evs);
+      const max = m.h <= 2 ? 1 : m.h === 3 ? 2 : 3;
+      evs.slice(0, max).forEach((ev, i) => {
+        out.push(`<button class="traffic-item" data-act="event-open" data-arg="${esc(m.id)}:traffic|${i}" data-key="${m.id}:tr${i}">${icon(WARN_PATH, 16, 2)}
+          <span class="stack"><span class="traffic-title">${esc(ev.title.replace(TRAFFIC_RE, '').trim() || ev.title)}</span><span class="muted small">${esc(whenLabel(ev))}</span></span></button>`);
+      });
+      if (evs.length > max) out.push(`<span class="muted small traffic-more">+ ${plural(evs.length - max, 'autre info trafic', 'autres infos trafic')}</span>`);
+    }
+    return out.length ? `<div class="traffic">${out.join('')}</div>` : '';
+  }
+
   function transit(m, list, c) {
     const st = list[0];
     const o = m.options || {};
@@ -497,9 +532,10 @@ window.HD = window.HD || {};
     const badge = `<span class="line-badge" style="background: ${line.color}; color: ${line.fg || '#fff'}" aria-label="${esc(line.mode + ' ' + line.name)}">${esc(line.name)}</span>`;
     const updated = M.relTime(st.last_updated);
     const head2 = `<div class="mod-head"><h2 class="row transit-title">${badge}<span>${esc(m.title || (line.mode + ' ' + line.name + ' · ' + M.shortName(st)))}</span></h2>${updated ? `<span class="muted small">Mis à jour ${esc(updated)}</span>` : ''}</div>`;
+    const infos = trafficInfo(m, line, deps, c);
     if (!deps.length) {
       const noData = !(st.attributes && st.attributes.MonitoredStopVisit);
-      return head2 + `<div class="mod-empty"><p class="muted small">${noData ? "Aucune donnée reçue : vérifiez la clé API IDFM dans Home Assistant." : 'Aucun départ annoncé pour le moment.'}</p></div>`;
+      return head2 + infos + `<div class="mod-empty"><p class="muted small">${noData ? "Aucune donnée reçue : vérifiez la clé API IDFM dans Home Assistant." : 'Aucun départ annoncé pour le moment.'}</p></div>`;
     }
     const max = m.h <= 1 ? 1 : m.h === 2 ? 4 : m.h === 3 ? 6 : 9;
     const row = (d) => {
@@ -515,10 +551,10 @@ window.HD = window.HD || {};
     // Wide module without a direction filter: one column per direction.
     const dirs = [...new Set(deps.map(dirOf))];
     if (!o.direction && m.w >= 2 && dirs.length >= 2) {
-      return head2 + `<div class="dep-cols" style="grid-template-columns: repeat(${Math.min(dirs.length, m.w)}, minmax(0, 1fr))">${dirs.slice(0, m.w).map((dir) =>
+      return head2 + infos + `<div class="dep-cols" style="grid-template-columns: repeat(${Math.min(dirs.length, m.w)}, minmax(0, 1fr))">${dirs.slice(0, m.w).map((dir) =>
         `<div class="dep-col" data-scroll="${m.id}:${esc(dir)}"><h3 class="cal-day">Vers ${esc(dir)}</h3><ul class="dep-list">${deps.filter((d) => dirOf(d) === dir).slice(0, max).map(row).join('')}</ul></div>`).join('')}</div>`;
     }
-    return head2 + `<ul class="dep-list" data-scroll="${m.id}">${deps.slice(0, max).map(row).join('')}</ul>`;
+    return head2 + infos + `<ul class="dep-list" data-scroll="${m.id}">${deps.slice(0, max).map(row).join('')}</ul>`;
   }
 
   // ---------- Notes ----------
@@ -670,5 +706,5 @@ window.HD = window.HD || {};
     return svg(`<path stroke="#FFFFFF" d="${wxIcon(cond)}"></path>`);
   }
 
-  HD.Modules = { types: T, lightState, TONES, ACCENTS, ZONES, tempThresholds, tempZone, tempColorsOn, wxIcon, wxArt, dayLabel, dailyItems, whenLabel, dayTitle, transitDirections, calEvents, calBody, CAL_VIEWS, departures, LINES, mediaPos, mmss, isSpotify };
+  HD.Modules = { types: T, lightState, TONES, ACCENTS, ZONES, tempThresholds, tempZone, tempColorsOn, wxIcon, wxArt, dayLabel, dailyItems, whenLabel, dayTitle, transitDirections, calEvents, calBody, CAL_VIEWS, isTraffic, agendaEvents, departures, LINES, mediaPos, mmss, isSpotify };
 })();
