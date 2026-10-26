@@ -501,7 +501,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       const t = T[d.type];
       const room = pageRoom();
       const seg = (act, value, opts) => `<div class="segmented inline" role="group">${opts.map(([v, label]) =>
-        `<button type="button" class="${value === v ? 'is-on' : ''}" aria-pressed="${value === v}" data-act="${act}" data-arg="${v}" data-key="${act}:${v}">${label}</button>`).join('')}</div>`;
+        `<button type="button" class="${value === v ? 'is-on' : ''}" aria-pressed="${value === v}" data-act="${act}" data-arg="${esc(v)}" data-key="${act}:${esc(v)}">${label}</button>`).join('')}</div>`;
       title = t.name;
       const auto = !Array.isArray(d.entities);
       let picker = '';
@@ -583,6 +583,12 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
         <div class="field-row"><span class="field-label">Largeur</span>${seg('draft-w', String(d.w), [['1', '1'], ['2', '2'], ['3', '3'], ['4', '4']])}</div>
         <div class="field-row"><span class="field-label">Hauteur</span>${seg('draft-h', String(d.h), [['1', '1'], ['2', '2'], ['3', '3'], ['4', '4']])}</div>
         ${t.options ? `<div class="field-row"><span class="field-label">Affichage</span>${seg('draft-group', d.options.group || (d.scope === 'all' ? 'room' : 'sensor'), [['sensor', 'Par capteur'], ['room', 'Moyenne par pièce']])}</div>` : ''}
+        ${d.type === 'transit' ? (() => {
+          const st = L.resolve(d, env(room))[0];
+          const dirs = st ? HD.Modules.transitDirections(st) : [];
+          return `<div class="field-row"><span class="field-label">Direction</span>${seg('draft-dir', d.options.direction || '', [['', 'Toutes']].concat(dirs.map((x) => [x, esc(x)])))}</div>
+            <p class="muted small">« Toutes » : en largeur 2 ou plus, une colonne par direction.</p>`;
+        })() : ''}
         ${d.type === 'calendar' ? `<div class="field-row"><span class="field-label">Période</span>${seg('draft-days', String(d.options.days || 7), [['1', "Aujourd'hui"], ['3', '3 j'], ['7', '7 j'], ['14', '14 j'], ['30', '30 j']])}</div>` : ''}
         ${colors}
         ${tempColors}
@@ -922,6 +928,11 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       if (ev) { app.modal = { kind: 'event', ev }; render(); }
     },
     'draft-days'(arg) { app.modal.draft.options.days = Number(arg); render(); },
+    'draft-dir'(arg) {
+      if (arg) app.modal.draft.options.direction = arg;
+      else delete app.modal.draft.options.direction;
+      render();
+    },
     'modal-save'() {
       const d = app.modal.draft;
       // Labels are shared by all modules: store them next to the layout.

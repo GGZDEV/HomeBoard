@@ -68,6 +68,7 @@ HD.DemoConnection = class DemoConnection {
       S('scene.cinema', ago(1), { friendly_name: 'Cinéma', entity_id: ['light.salon_plafonnier', 'media_player.salon_tv'] }),
       S('scene.nuit', ago(20), { friendly_name: 'Nuit', entity_id: ['light.salon_plafonnier', 'climate.chambre'] }),
       S('scene.absent', 'unknown', { friendly_name: 'Absent', entity_id: [] }),
+      S('sensor.rer_d_le_mee', '0', { friendly_name: 'Le Mée', MonitoredStopVisit: [] }),
       S('calendar.famille', 'off', { friendly_name: 'Famille', message: 'Piscine Léa' }),
       S('calendar.travail', 'off', { friendly_name: 'Travail', message: 'Point équipe' }),
       S('automation.lever_stores', 'on', { friendly_name: 'Ouvrir les stores au lever du soleil', last_triggered: ago(9) }),
@@ -86,6 +87,30 @@ HD.DemoConnection = class DemoConnection {
       this.states.set(st.entity_id, st);
       this.entities.push({ entity_id: st.entity_id, area_id: area || null, device_id: device || null });
     }
+    // RER D at Le Mée, in the SIRI Lite shape PRIM returns; regenerated every 2 min like the HA sensor.
+    const rer = () => {
+      const t0 = Date.now();
+      const v = (min, delay, dest, dir, mission, quai, status) => {
+        const aimed = new Date(t0 + min * 60000).toISOString();
+        const exp = new Date(t0 + (min + delay) * 60000).toISOString();
+        return { MonitoredVehicleJourney: {
+          LineRef: { value: 'STIF:Line::C01728:' }, DirectionName: [{ value: dir }], DestinationName: [{ value: dest }],
+          JourneyNote: [{ value: mission }],
+          MonitoredCall: { AimedDepartureTime: aimed, ExpectedDepartureTime: exp, DepartureStatus: status || (delay ? 'delayed' : 'onTime'), DeparturePlatformName: { value: quai } }
+        } };
+      };
+      return [
+        v(4, 0, 'Paris Gare de Lyon', 'Paris', 'ZOVO', '2'), v(9, 0, 'Melun', 'Melun', 'ROVO', '1'),
+        v(19, 3, 'Creil', 'Paris', 'ZUPO', '2'), v(26, 0, 'Melun', 'Melun', 'ROVO', '1'),
+        v(34, 0, 'Paris Gare de Lyon', 'Paris', 'ZOVO', '2', 'cancelled'), v(41, 0, 'Melun', 'Melun', 'ROVO', '1'),
+        v(49, 0, 'Paris Gare de Lyon', 'Paris', 'ZOVO', '2'), v(64, 0, 'Creil', 'Paris', 'ZUPO', '2'), v(71, 0, 'Melun', 'Melun', 'ROVO', '1')
+      ];
+    };
+    const rerState = this.states.get('sensor.rer_d_le_mee');
+    rerState.attributes.MonitoredStopVisit = rer();
+    rerState.state = String(rerState.attributes.MonitoredStopVisit.length);
+    this.rerTimer = setInterval(() => this.set('sensor.rer_d_le_mee', null, { MonitoredStopVisit: rer() }), 120000);
+
     // Thermometers drift a little so the demo feels alive.
     this.timer = setInterval(() => {
       for (const st of this.states.values()) {
@@ -196,5 +221,5 @@ HD.DemoConnection = class DemoConnection {
     return Promise.resolve();
   }
 
-  close() { clearInterval(this.timer); }
+  close() { clearInterval(this.timer); clearInterval(this.rerTimer); }
 };

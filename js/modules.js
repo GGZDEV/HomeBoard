@@ -410,6 +410,78 @@ window.HD = window.HD || {};
     return head(title, legend) + `<div class="cal-scroll" data-scroll="${m.id}">${html}</ul></div>`;
   }
 
+  // ---------- Next departures (Île-de-France Mobilités, SIRI Lite via a HA REST sensor) ----------
+  // Known lines (referentiel-des-lignes IDFM): badge text and official color.
+  const LINES = {
+    C01728: { mode: 'RER', name: 'D', color: '#008b5b' },
+    C01731: { mode: 'Transilien', name: 'R', color: '#f49fb3', fg: '#1c1c1e' }
+  };
+  const val = (x) => (Array.isArray(x) ? (x[0] && x[0].value) : x && x.value !== undefined ? x.value : x) || '';
+
+  // SIRI MonitoredStopVisit -> { time, aimed, delay, cancelled, destination, direction, mission, platform, line }
+  function departures(st) {
+    const visits = (st && st.attributes && st.attributes.MonitoredStopVisit) || [];
+    const now = Date.now();
+    return visits.map((v) => {
+      const j = v.MonitoredVehicleJourney || {};
+      const call = j.MonitoredCall || {};
+      const exp = Date.parse(call.ExpectedDepartureTime || call.ExpectedArrivalTime || '');
+      const aimed = Date.parse(call.AimedDepartureTime || call.AimedArrivalTime || '');
+      const time = isFinite(exp) ? exp : aimed;
+      const status = String(call.DepartureStatus || call.ArrivalStatus || '').toLowerCase();
+      const lineId = (String(val(j.LineRef)).match(/C\d{5}/) || [])[0];
+      return {
+        time, aimed: isFinite(aimed) ? aimed : null,
+        delay: isFinite(exp) && isFinite(aimed) ? Math.round((exp - aimed) / 60000) : 0,
+        cancelled: status === 'cancelled',
+        destination: val(j.DestinationName) || val(call.DestinationDisplay) || '',
+        direction: val(j.DirectionName) || '',
+        mission: val(j.JourneyNote) || val(j.VehicleJourneyName) || '',
+        platform: val(call.DeparturePlatformName) || val(call.ArrivalPlatformName) || '',
+        line: LINES[lineId] || null
+      };
+    }).filter((d) => isFinite(d.time) && d.time > now - 30000).sort((a, b) => a.time - b.time);
+  }
+
+  // Directions seen in the data, for the module's direction filter.
+  function transitDirections(st) {
+    return [...new Set(departures(st).map((d) => d.direction || d.destination).filter(Boolean))];
+  }
+
+  function transit(m, list, c) {
+    const st = list[0];
+    const o = m.options || {};
+    let deps = departures(st);
+    const dirOf = (d) => d.direction || d.destination;
+    if (o.direction) deps = deps.filter((d) => dirOf(d) === o.direction);
+    const line = (deps[0] && deps[0].line) || LINES.C01728;
+    const badge = `<span class="line-badge" style="background: ${line.color}; color: ${line.fg || '#fff'}" aria-label="${esc(line.mode + ' ' + line.name)}">${esc(line.name)}</span>`;
+    const updated = M.relTime(st.last_updated);
+    const head2 = `<div class="mod-head"><h2 class="row transit-title">${badge}<span>${esc(m.title || (line.mode + ' ' + line.name + ' · ' + M.shortName(st)))}</span></h2>${updated ? `<span class="muted small">Mis à jour ${esc(updated)}</span>` : ''}</div>`;
+    if (!deps.length) {
+      const noData = !(st.attributes && st.attributes.MonitoredStopVisit);
+      return head2 + `<div class="mod-empty"><p class="muted small">${noData ? "Aucune donnée reçue : vérifiez la clé API IDFM dans Home Assistant." : 'Aucun départ annoncé pour le moment.'}</p></div>`;
+    }
+    const max = m.h <= 1 ? 1 : m.h === 2 ? 4 : m.h === 3 ? 6 : 9;
+    const row = (d) => {
+      const mins = Math.max(0, Math.round((d.time - Date.now()) / 60000));
+      const t = new Date(d.time).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+      const late = !d.cancelled && d.delay >= 1;
+      return `<li class="dep${d.cancelled ? ' is-cancelled' : ''}${late ? ' is-late' : ''}">
+        <span class="dep-time"><span class="dep-mins">${d.cancelled ? '—' : mins === 0 ? 'À quai' : mins + ' min'}</span><span class="muted small">${esc(t)}</span></span>
+        <span class="stack grow"><span class="dep-dest">${esc(d.destination || d.direction)}</span>
+          <span class="small dep-info">${d.mission ? `<span class="dep-mission">${esc(d.mission)}</span>` : ''}${d.platform ? `<span>Voie ${esc(d.platform)}</span>` : ''}${d.cancelled ? '<span class="dep-bad">Supprimé</span>' : late ? `<span class="dep-warn">+${d.delay} min</span>` : ''}</span></span>
+      </li>`;
+    };
+    // Wide module without a direction filter: one column per direction.
+    const dirs = [...new Set(deps.map(dirOf))];
+    if (!o.direction && m.w >= 2 && dirs.length >= 2) {
+      return head2 + `<div class="dep-cols" style="grid-template-columns: repeat(${Math.min(dirs.length, m.w)}, minmax(0, 1fr))">${dirs.slice(0, m.w).map((dir) =>
+        `<div class="dep-col"><h3 class="cal-day">Vers ${esc(dir)}</h3><ul class="dep-list">${deps.filter((d) => dirOf(d) === dir).slice(0, max).map(row).join('')}</ul></div>`).join('')}</div>`;
+    }
+    return head2 + `<ul class="dep-list" data-scroll="${m.id}">${deps.slice(0, max).map(row).join('')}</ul>`;
+  }
+
   // ---------- Notes ----------
   function notes(m) {
     const o = m.options || {};
@@ -472,11 +544,13 @@ window.HD = window.HD || {};
     weather: { name: 'Météo', desc: 'Conditions actuelles ; agrandi, les prévisions de la semaine. Touchez-le pour le détail.', icon: IC.cloud, w: 2, h: 2, single: true, pick: dom('weather'), render: weather },
     calendar: { name: 'Calendrier', desc: 'Agenda des prochains jours depuis vos calendriers Home Assistant (Google, iCal, local…).', icon: IC.calendar, w: 2, h: 3,
       pick: dom('calendar'), render: calendar },
+    transit: { name: 'Départs train / RER', desc: 'Prochains départs en temps réel (Île-de-France Mobilités) : horaires, retards, quais, missions.', icon: IC.train, w: 2, h: 2, single: true,
+      pick: (s) => M.domainOf(s.entity_id) === 'sensor' && !!s.attributes.MonitoredStopVisit, render: transit },
     notes: { name: 'Notes', desc: 'Un mémo libre : liste de courses, rappels, code wifi invités… Enregistré dans votre compte.', icon: IC.note, w: 1, h: 2, noEntities: true, render: notes },
     automations: { name: 'Automatisations', desc: 'Activer/désactiver les automatisations, lancer les scripts.', icon: IC.robot, w: 2, h: 4,
       pick: (s) => ['automation', 'script'].includes(M.domainOf(s.entity_id)), render: automations },
     rooms: { name: 'Pièces', desc: 'Résumé de chaque pièce ; un clic ouvre la pièce.', icon: IC.home, w: 4, h: 2, noEntities: true, render: rooms }
   };
 
-  HD.Modules = { types: T, lightState, TONES, ACCENTS, ZONES, tempThresholds, tempZone, tempColorsOn, wxIcon, dayLabel, dailyItems, whenLabel, dayTitle };
+  HD.Modules = { types: T, lightState, TONES, ACCENTS, ZONES, tempThresholds, tempZone, tempColorsOn, wxIcon, dayLabel, dailyItems, whenLabel, dayTitle, transitDirections };
 })();

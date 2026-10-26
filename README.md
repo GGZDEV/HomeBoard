@@ -63,6 +63,7 @@ automatiquement à partir des appareils trouvés (les nouveaux appareils apparai
 | **Énergie** | capteurs `power` / `energy` |
 | **Météo** | `weather.*` ; en largeur ≥ 2 ou hauteur ≥ 3, les prévisions des jours suivants ; un toucher ouvre le détail (ressenti, vent, pression, 24 h, 7 jours) |
 | **Calendrier** | `calendar.*` (Google Calendar, Calendrier distant iCal, calendrier local…) : agenda groupé par jour, une couleur par calendrier, détail au toucher ; période réglable (aujourd'hui à 30 jours) |
+| **Départs train / RER** | prochains départs temps réel IDFM (capteur REST, voir `homeassistant/rer_d_le_mee.yaml`) : minutes restantes, heure, destination, mission, voie, retards et suppressions ; une colonne par direction quand il est large, ou filtré sur une direction |
 | **Notes** | mémo libre, enregistré automatiquement dans votre compte Home Assistant |
 | **Automatisations** | activer/désactiver `automation.*`, lancer `script.*` |
 | **Pièces** | résumé de chaque pièce, un clic ouvre la pièce |

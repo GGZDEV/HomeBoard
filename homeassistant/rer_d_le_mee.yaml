@@ -1,0 +1,36 @@
+# Prochains RER D au départ de Le Mée — capteur pour le module « Départs train / RER ».
+# Source : API temps réel Île-de-France Mobilités (PRIM), « Prochains passages (requête unitaire) ».
+#
+# 1. Créez un compte gratuit sur https://prim.iledefrance-mobilites.fr, puis
+#    « Mon jeton d'authentification » › Générer. Quota : 1 000 requêtes / jour.
+# 2. Dans /config/secrets.yaml, ajoutez la ligne :
+#       idfm_api_key: VOTRE_JETON
+# 3. Collez le bloc « rest: » ci-dessous dans /config/configuration.yaml
+#    (si une section « rest: » existe déjà, ajoutez seulement l'élément « - resource: … » dessous).
+# 4. Outils de développement › YAML › « Vérifier la configuration », puis redémarrez Home Assistant.
+#
+# Gare : Le Mée = STIF:StopArea:SP:45784:   Ligne : RER D = STIF:Line::C01728:
+# (référentiels IDFM « zones-d-arrets » et « referentiel-des-lignes »)
+
+rest:
+  - resource: "https://prim.iledefrance-mobilites.fr/marketplace/stop-monitoring?MonitoringRef=STIF:StopArea:SP:45784:&LineRef=STIF:Line::C01728:"
+    headers:
+      apikey: !secret idfm_api_key
+    # 120 s = 720 requêtes / jour, sous le quota de 1 000.
+    scan_interval: 120
+    timeout: 20
+    sensor:
+      - name: "Le Mée"
+        unique_id: idfm_rer_d_le_mee
+        icon: mdi:train
+        value_template: >-
+          {{ value_json.Siri.ServiceDelivery.StopMonitoringDelivery[0].MonitoredStopVisit | default([]) | count }}
+        json_attributes_path: "$.Siri.ServiceDelivery.StopMonitoringDelivery[0]"
+        json_attributes:
+          - MonitoredStopVisit
+
+# Facultatif : ne pas stocker ces horaires dans l'historique (ils changent toutes les 2 min).
+# recorder:
+#   exclude:
+#     entities:
+#       - sensor.le_mee
