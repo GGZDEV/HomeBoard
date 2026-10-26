@@ -35,10 +35,10 @@ ul { list-style: none; margin: 0; padding: 0; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 /* ---------- blurred room behind the glass ---------- */
-.scene { position: fixed; inset: 0; overflow: hidden; z-index: 0; }
-.scene-inner { position: absolute; inset: -40px; filter: blur(16px); }
+.scene { position: fixed; top: 0; right: 0; bottom: 0; left: 0; overflow: hidden; z-index: 0; }
+.scene-inner { position: absolute; top: -40px; right: -40px; bottom: -40px; left: -40px; filter: blur(16px); }
 .scene-inner > div { position: absolute; }
-.b-wall { inset: 0; background: #b7a18a; }
+.b-wall { top: 0; right: 0; bottom: 0; left: 0; background: #b7a18a; }
 .b-window { left: 8.3%; top: 8.9%; width: 30.5%; height: 66.7%; background: #f6eedf; border-radius: 6px; box-shadow: 0 0 180px 70px rgba(255, 238, 205, 0.6); }
 .b-mullion { left: 23.3%; top: 8.9%; width: 0.7%; height: 66.7%; background: #cdbca6; }
 .b-floor { left: 0; right: 0; bottom: 0; height: 33.3%; background: #6b5546; }
@@ -90,7 +90,8 @@ ul { list-style: none; margin: 0; padding: 0; }
 /* ---------- main panel ---------- */
 .panel {
   position: relative;
-  height: min(690px, calc(100dvh - 72px));
+  height: calc(100vh - 72px);
+  max-height: 690px;
   border-radius: 46px;
   padding: 36px 40px;
   display: flex; flex-direction: column; gap: 22px;
@@ -143,8 +144,14 @@ h2 { font-size: 17px; font-weight: 600; }
 .mod.h1 { padding: 16px 20px; }
 .mod-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 14px; }
 .mod-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; align-self: stretch; }
-.mod-head h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mod-head .muted { white-space: nowrap; }
+/* The title keeps its room; the info on the right shrinks (ellipsis) first. */
+.mod-head h2 { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mod-head > .muted { flex: 1 1 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; }
+
+/* Scrollable lists fade out at the edge that has more content (classes set by app.js). */
+.fade-b { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent); }
+.fade-t { -webkit-mask-image: linear-gradient(to top, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to top, #000 calc(100% - 28px), transparent); }
+.fade-t.fade-b { -webkit-mask-image: linear-gradient(to bottom, transparent, #000 28px, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to bottom, transparent, #000 28px, #000 calc(100% - 28px), transparent); }
 .mod-empty { flex: 1; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 10px; }
 
 /* edit mode */
@@ -171,7 +178,7 @@ h2 { font-size: 17px; font-weight: 600; }
 /* Climate */
 .t-climate .mod-body { align-items: center; }
 .dial { position: relative; width: 200px; height: 200px; flex: none; }
-.dial-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+.dial-center { position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
 .dial-temp { font-size: 52px; font-weight: 600; letter-spacing: -1.5px; line-height: 1; }
 .dial-temp.sm { font-size: 40px; }
 .dial-temp small { font-size: 20px; font-weight: 500; letter-spacing: 0; color: var(--fg-muted); margin-left: 2px; }
@@ -200,7 +207,7 @@ h2 { font-size: 17px; font-weight: 600; }
 .big-num small { font-size: 15px; font-weight: 500; color: var(--fg-muted); }
 .slider { position: relative; display: block; height: 44px; flex: none; border-radius: 22px; background: var(--glass-chip); overflow: hidden; }
 .slider-fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--solid); border-radius: 22px; }
-.range { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.range { position: absolute; top: 0; left: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
 .slider:has(.range:focus-visible) { outline: 2px solid #fff; outline-offset: 2px; }
 .tones { gap: 10px; }
 .tone { width: 44px; height: 44px; border-radius: 22px; border: none; padding: 0; background: transparent; display: flex; align-items: center; justify-content: center; }
@@ -349,9 +356,10 @@ button.tile.is-on:hover { background: #fff; }
 .weather-ic { width: 60px; height: 60px; border-radius: 30px; flex: none; background: var(--glass-chip); display: flex; align-items: center; justify-content: center; }
 
 /* Rooms overview */
-.room-cards { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); grid-auto-rows: minmax(130px, 1fr); gap: 12px; scrollbar-width: none; }
-.room-card { border-radius: 24px; padding: 16px 18px; display: flex; flex-direction: column; justify-content: space-between; text-align: left; }
-.room-card-name { font-size: 18px; font-weight: 600; }
+.room-cards { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); grid-auto-rows: minmax(96px, 1fr); gap: 10px; scrollbar-width: none; }
+.room-card { border-radius: 22px; padding: 12px 16px; gap: 4px; min-width: 0; display: flex; flex-direction: column; justify-content: space-between; text-align: left; }
+.room-card-name { font-size: 17px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.room-card .row-between { min-width: 0; }
 .room-icons { display: flex; gap: 6px; min-height: 30px; }
 .mini-ic { width: 30px; height: 30px; border-radius: 15px; background: var(--accent); color: var(--ink); display: flex; align-items: center; justify-content: center; }
 
@@ -400,9 +408,9 @@ button.tile.is-on:hover { background: #fff; }
 .select-wrap option { background: #2c2c34; }
 
 /* ---------- dialogs ---------- */
-.modal-backdrop { position: fixed; inset: 0; z-index: 10; background: rgba(0, 0, 0, 0.3); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.modal-backdrop { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 10; background: rgba(0, 0, 0, 0.3); display: flex; align-items: center; justify-content: center; padding: 16px; }
 .modal {
-  width: min(640px, 100%); max-height: min(760px, calc(100dvh - 32px));
+  width: 100%; max-width: 640px; max-height: 760px; max-height: calc(100vh - 32px);
   border-radius: 36px; display: flex; flex-direction: column; overflow: hidden;
   background: rgba(44, 44, 52, 0.72);
 }
@@ -456,7 +464,7 @@ button.tile.is-on:hover { background: #fff; }
 /* ---------- login ---------- */
 .login {
   grid-column: 1 / -1; justify-self: center;
-  width: min(520px, 100%); border-radius: 46px; padding: 40px;
+  width: 100%; max-width: 520px; border-radius: 46px; padding: 40px;
   display: flex; flex-direction: column; gap: 28px;
 }
 .login-head { display: flex; flex-direction: column; gap: 10px; }
@@ -491,13 +499,13 @@ button.tile.is-on:hover { background: #fff; }
 
 @media (max-width: 860px), (max-height: 620px) {
   body { overflow: auto; }
-  #app { display: block; height: auto; min-height: 100dvh; padding: 16px 16px 104px; }
+  #app { display: block; height: auto; min-height: 100vh; padding: 16px 16px 104px; }
   .rail {
     position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 3;
     width: auto; flex-direction: row; padding: 0 10px; height: 68px;
   }
   .grabber { display: none; }
-  .panel { height: auto; border-radius: 32px; padding: 24px 20px; }
+  .panel { height: auto; max-height: none; border-radius: 32px; padding: 24px 20px; }
   .page-head { flex-wrap: wrap; }
   .page-head h1 { font-size: 28px; }
   .room-tabs { flex-wrap: nowrap; overflow-x: auto; margin: 0 -20px; padding: 0 20px; scrollbar-width: none; }
@@ -513,4 +521,12 @@ button.tile.is-on:hover { background: #fff; }
   .toast { bottom: 100px; }
   .login { padding: 28px 22px; border-radius: 32px; margin-top: 8vh; }
   .modal { border-radius: 28px; }
+}
+
+/* Browsers that know dvh (mobile address bar aware): use it; older ones keep the vh values above. */
+@supports (height: 100dvh) {
+  .modal { max-height: calc(100dvh - 32px); }
+}
+@media (min-width: 861px) and (min-height: 621px) {
+  @supports (height: 100dvh) { .panel { height: calc(100dvh - 72px); } }
 }

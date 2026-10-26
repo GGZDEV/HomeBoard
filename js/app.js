@@ -238,6 +238,7 @@
     else $app.innerHTML = shell(app.tab === 'settings' ? pageSettings() : pageModules()) + (app.modal ? modalView() : '');
 
     $app.querySelectorAll('[data-scroll]').forEach((el) => { if (scrollers[el.dataset.scroll]) el.scrollTop = scrollers[el.dataset.scroll]; });
+    updateFades();
     if (focusKey) {
       const el = $app.querySelector(`[data-key="${CSS.escape(focusKey)}"]`);
       if (el) {
@@ -247,6 +248,17 @@
     }
     if (app.modal && app.modal.search) filterPicker(app.modal.search);
   }
+
+  // Fade the edge of a list that has more to show, so a cut row reads as "scroll for more".
+  function fade(el) {
+    if (el.tagName === 'TEXTAREA') return;
+    const more = el.scrollHeight - el.clientHeight > 4;
+    el.classList.toggle('fade-b', more && el.scrollTop + el.clientHeight < el.scrollHeight - 4);
+    el.classList.toggle('fade-t', more && el.scrollTop > 4);
+  }
+  function updateFades() { $app.querySelectorAll('[data-scroll]').forEach(fade); }
+  $app.addEventListener('scroll', (e) => { if (e.target.dataset && e.target.dataset.scroll) fade(e.target); }, true);
+  window.addEventListener('resize', () => updateFades());
 
   function loginView() {
     const saved = store.get('hd.conn', {}) || {};
@@ -391,8 +403,11 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     const list = L.resolve(m, e);
     let inner;
     if (!t.noEntities && !list.length) {
-      inner = HD.UI.head(m.title || t.name) + `<div class="mod-empty"><p class="muted small">${t.manual ? 'Aucun capteur choisi.' : 'Aucun appareil compatible ici.'}</p>
-        <button class="btn-glass sm" data-act="mod-config" data-key="${m.id}:cfg-empty">Choisir des appareils</button></div>`;
+      // Nothing to show: say why; offer the picker only if HA has something compatible somewhere.
+      const anywhere = [...app.index.visible].some((id) => { const s = app.states.get(id); return s && t.pick(s); });
+      const msg = t.manual ? 'Aucun capteur choisi.' : anywhere ? 'Aucun appareil compatible ici.' : (t.empty || 'Aucun appareil compatible trouvé dans Home Assistant.');
+      inner = HD.UI.head(m.title || t.name) + `<div class="mod-empty"><p class="muted small">${esc(msg)}</p>
+        ${anywhere || t.manual ? `<button class="btn-glass sm" data-act="mod-config" data-key="${m.id}:cfg-empty">Choisir des appareils</button>` : ''}</div>`;
     } else {
       // A module set to "Toute la maison" on a room page behaves like a house-wide one.
       inner = t.render(m, list, m.scope === 'all' && !ctx.global ? { ...ctx, global: true } : ctx);
@@ -754,6 +769,12 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
 
   <section class="list-section">
     <h2>Cet appareil</h2>
+    <p class="muted small">${esc((() => {
+      const ua = navigator.userAgent;
+      const b = ua.match(/(SamsungBrowser|Firefox|Edg|Chrome)\/(\d+)/);
+      const os = ua.match(/Android [\d.]+|Windows NT [\d.]+|iPhone OS [\d_]+|Mac OS X [\d_]+/);
+      return 'Navigateur : ' + (b ? b[1].replace('Edg', 'Edge') + ' ' + b[2] : 'inconnu') + (os ? ' · ' + os[0].replace(/_/g, '.') : '') + ' · écran ' + innerWidth + '×' + innerHeight;
+    })())}</p>
     <div class="card list-item">
       <span class="stack grow"><span>Plein écran automatique</span><span class="muted small">${fsSupported() ? 'Le premier toucher passe la page en plein écran, et y revient si on en sort. Réglage propre à cet appareil.' : 'Ce navigateur ne permet pas le plein écran.'}</span></span>
       <button class="switch${store.get('hd.autofs', false) ? ' is-on' : ''}" role="switch" aria-checked="${!!store.get('hd.autofs', false)}" aria-label="Plein écran automatique" data-act="autofs" data-key="autofs" ${fsSupported() ? '' : 'disabled'}><span></span></button>

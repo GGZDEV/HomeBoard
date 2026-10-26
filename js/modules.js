@@ -211,7 +211,8 @@ window.HD = window.HD || {};
     }
     const lo = Math.min(...temps), hi = Math.max(...temps);
     const scaleLo = Math.min(lo, 15), scaleHi = Math.max(hi, 28);
-    const right = temps.length ? `Moy. ${esc(M.fmtNum(mean))}° · ${esc(M.fmtNum(lo))}–${esc(M.fmtNum(hi))}°` : '';
+    // Narrow module: the average only, so the title stays readable.
+    const right = !temps.length ? '' : m.w === 1 ? `Moy. ${esc(M.fmtNum(mean))}°` : `Moy. ${esc(M.fmtNum(mean))}° · ${esc(M.fmtNum(lo))}–${esc(M.fmtNum(hi))}°`;
     return head(title, right) + `<ul class="temp-list" data-scroll="${m.id}">
     ${rows.map((r) => {
       const pct = r.temp == null ? 0 : Math.round(((r.temp - scaleLo) / (scaleHi - scaleLo || 1)) * 100);
@@ -477,7 +478,7 @@ window.HD = window.HD || {};
     const dirs = [...new Set(deps.map(dirOf))];
     if (!o.direction && m.w >= 2 && dirs.length >= 2) {
       return head2 + `<div class="dep-cols" style="grid-template-columns: repeat(${Math.min(dirs.length, m.w)}, minmax(0, 1fr))">${dirs.slice(0, m.w).map((dir) =>
-        `<div class="dep-col"><h3 class="cal-day">Vers ${esc(dir)}</h3><ul class="dep-list">${deps.filter((d) => dirOf(d) === dir).slice(0, max).map(row).join('')}</ul></div>`).join('')}</div>`;
+        `<div class="dep-col" data-scroll="${m.id}:${esc(dir)}"><h3 class="cal-day">Vers ${esc(dir)}</h3><ul class="dep-list">${deps.filter((d) => dirOf(d) === dir).slice(0, max).map(row).join('')}</ul></div>`).join('')}</div>`;
     }
     return head2 + `<ul class="dep-list" data-scroll="${m.id}">${deps.slice(0, max).map(row).join('')}</ul>`;
   }
@@ -541,10 +542,12 @@ window.HD = window.HD || {};
       pick: (s) => ['sensor', 'binary_sensor', 'input_number', 'counter'].includes(M.domainOf(s.entity_id)), render: sensor },
     energy: { name: 'Énergie', desc: 'Puissance instantanée et consommation.', icon: IC.bolt, w: 2, h: 2,
       pick: (s) => M.isSensorClass(s, 'power') || M.isSensorClass(s, 'energy'), render: energy },
-    weather: { name: 'Météo', desc: 'Conditions actuelles ; agrandi, les prévisions de la semaine. Touchez-le pour le détail.', icon: IC.cloud, w: 2, h: 2, single: true, pick: dom('weather'), render: weather },
+    weather: { empty: 'Aucune entité météo dans Home Assistant (ajoutez par exemple l\'intégration Météo-France).', name: 'Météo', desc: 'Conditions actuelles ; agrandi, les prévisions de la semaine. Touchez-le pour le détail.', icon: IC.cloud, w: 2, h: 2, single: true, pick: dom('weather'), render: weather },
     calendar: { name: 'Calendrier', desc: 'Agenda des prochains jours depuis vos calendriers Home Assistant (Google, iCal, local…).', icon: IC.calendar, w: 2, h: 3,
+      empty: 'Aucun calendrier dans Home Assistant pour l\'instant. Connectez Google Agenda : Paramètres › Appareils et services › Ajouter une intégration › « Calendrier distant » (adresse iCal secrète) ou « Google Calendar ».',
       pick: dom('calendar'), render: calendar },
     transit: { name: 'Départs train / RER', desc: 'Prochains départs en temps réel (Île-de-France Mobilités) : horaires, retards, quais, missions.', icon: IC.train, w: 2, h: 2, single: true,
+      empty: 'Capteur de départs introuvable. Ajoutez le capteur IDFM dans Home Assistant (fichier homeassistant/rer_d_le_mee.yaml), puis redémarrez-le.',
       pick: (s) => M.domainOf(s.entity_id) === 'sensor' && !!s.attributes.MonitoredStopVisit, render: transit },
     notes: { name: 'Notes', desc: 'Un mémo libre : liste de courses, rappels, code wifi invités… Enregistré dans votre compte.', icon: IC.note, w: 1, h: 2, noEntities: true, render: notes },
     automations: { name: 'Automatisations', desc: 'Activer/désactiver les automatisations, lancer les scripts.', icon: IC.robot, w: 2, h: 4,
