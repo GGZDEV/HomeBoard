@@ -67,11 +67,12 @@ ul { list-style: none; margin: 0; padding: 0; }
   height: 100vh;
   height: 100dvh;
   display: grid;
-  grid-template-columns: 68px minmax(0, 1140px);
+  grid-template-columns: 68px minmax(0, 1600px);
   justify-content: center;
   align-content: center;
-  column-gap: 30px;
-  padding: 24px 24px 48px;
+  column-gap: 20px;
+  /* Thin outer margins: the panel uses (almost) the whole screen; 34px at the bottom for the grabber. */
+  padding: 14px 18px 34px;
 }
 
 /* ---------- side rail ---------- */
@@ -90,20 +91,19 @@ ul { list-style: none; margin: 0; padding: 0; }
 /* ---------- main panel ---------- */
 .panel {
   position: relative;
-  height: calc(100vh - 72px);
-  max-height: 690px;
-  border-radius: 46px;
-  padding: 36px 40px;
-  display: flex; flex-direction: column; gap: 22px;
+  height: calc(100vh - 48px);
+  border-radius: 40px;
+  padding: 28px 32px;
+  display: flex; flex-direction: column; gap: 18px;
   min-width: 0;
 }
 .grabber {
-  position: fixed; left: 0; right: 0; bottom: 18px; z-index: 1;
+  position: fixed; left: 0; right: 0; bottom: 11px; z-index: 1;
   display: flex; justify-content: center; align-items: center; gap: 12px; padding-left: 98px;
   pointer-events: none;
 }
-.grabber .dot { width: 14px; height: 14px; border-radius: 7px; background: rgba(255, 255, 255, 0.55); }
-.grabber .bar { width: 150px; height: 10px; border-radius: 5px; background: rgba(255, 255, 255, 0.55); }
+.grabber .dot { width: 12px; height: 12px; border-radius: 6px; background: rgba(255, 255, 255, 0.55); }
+.grabber .bar { width: 150px; height: 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.55); }
 
 .page-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; }
 .page-head .titles { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
@@ -492,9 +492,12 @@ button.tile.is-on:hover { background: #fff; }
 .advanced[open] .login-form { margin-top: 16px; }
 
 /* ---------- smaller screens ---------- */
+/* Tablets keep the same 4-column layout as large screens (so the arrangement chosen on the PC
+   is the one on the tablet); a bit tighter between 861 and 1100 px. */
 @media (max-width: 1100px) {
-  .mods { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .mod.w3, .mod.w4 { grid-column: span 2 !important; }
+  .mods { gap: 12px; }
+  .mod { padding: 18px; border-radius: 26px; }
+  .panel { padding: 24px; }
 }
 
 @media (max-width: 860px), (max-height: 620px) {
@@ -528,5 +531,5 @@ button.tile.is-on:hover { background: #fff; }
   .modal { max-height: calc(100dvh - 32px); }
 }
 @media (min-width: 861px) and (min-height: 621px) {
-  @supports (height: 100dvh) { .panel { height: calc(100dvh - 72px); } }
+  @supports (height: 100dvh) { .panel { height: calc(100dvh - 48px); } }
 }

@@ -237,6 +237,7 @@
     if (!app.index) $app.innerHTML = loginView();
     else $app.innerHTML = shell(app.tab === 'settings' ? pageSettings() : pageModules()) + (app.modal ? modalView() : '');
 
+    fitRows(); // before restoring scroll positions, which depend on row heights
     $app.querySelectorAll('[data-scroll]').forEach((el) => { if (scrollers[el.dataset.scroll]) el.scrollTop = scrollers[el.dataset.scroll]; });
     updateFades();
     if (focusKey) {
@@ -258,7 +259,19 @@
   }
   function updateFades() { $app.querySelectorAll('[data-scroll]').forEach(fade); }
   $app.addEventListener('scroll', (e) => { if (e.target.dataset && e.target.dataset.scroll) fade(e.target); }, true);
-  window.addEventListener('resize', () => updateFades());
+  // Size grid rows from the space really available, so 4 rows = exactly the visible height:
+  // a height-4 module is never cut off, whatever the screen. Stacked (phone) layout: natural heights.
+  const STACKED = '(max-width: 860px), (max-height: 620px)';
+  function fitRows() {
+    const mods = $app.querySelector('.mods');
+    if (!mods) return;
+    if (window.matchMedia && window.matchMedia(STACKED).matches) { mods.style.removeProperty('--row'); return; }
+    const cs = getComputedStyle(mods);
+    const gap = parseFloat(cs.rowGap) || 16;
+    const inner = mods.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
+    mods.style.setProperty('--row', Math.max(72, Math.floor((inner - 3 * gap) / 4)) + 'px');
+  }
+  window.addEventListener('resize', () => { fitRows(); updateFades(); });
 
   function loginView() {
     const saved = store.get('hd.conn', {}) || {};
