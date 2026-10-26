@@ -154,15 +154,14 @@ window.HD = window.HD || {};
         return out;
       }
       if (key === 'home') {
+        // Row 1: temperatures + weather (wide enough for the week's forecast); then rooms, then energy.
         const row = [];
         if (has('temperature', 'all')) row.push(mod('temperature', 2, 2, 'all', { options: { group: 'room' } }));
-        if (has('weather', 'all')) row.push(mod('weather', 1, 2, 'all'));
-        if (has('energy', 'all')) row.push(mod('energy', 1, 2, 'all'));
-        if (row.length) {
-          const used = row.reduce((s, m) => s + m.w, 0);
-          row[0].w += 4 - used;
-        }
-        return [...row, mod('rooms', 4, 2, 'all')];
+        if (has('weather', 'all')) row.push(mod('weather', 2, 2, 'all'));
+        if (row.length) row[0].w += 4 - row.reduce((s, m) => s + m.w, 0);
+        const out = [...row, mod('rooms', 4, 2, 'all')];
+        if (has('energy', 'all')) out.push(mod('energy', 4, 2, 'all'));
+        return out;
       }
       if (key === 'auto') {
         return [has('scenes', 'all') && mod('scenes', 2, 4, 'all'), has('automations', 'all') && mod('automations', 2, 4, 'all')].filter(Boolean);

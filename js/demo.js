@@ -28,7 +28,9 @@ HD.DemoConnection = class DemoConnection {
       { area_id: 'sdb', name: 'Salle de bain' }
     ];
     const list = [
-      S('weather.maison', 'cloudy', { friendly_name: 'Maison', temperature: 14, temperature_unit: '°C' }),
+      S('weather.maison', 'partlycloudy', { friendly_name: 'Maison', temperature: 14, temperature_unit: '°C', humidity: 78,
+        pressure: 1016, pressure_unit: 'hPa', wind_speed: 12, wind_speed_unit: 'km/h', wind_bearing: 240, apparent_temperature: 12,
+        dew_point: 10, uv_index: 2, supported_features: 3 }),
       S('light.salon_plafonnier', 'on', { friendly_name: 'Salon Plafonnier', brightness: 204, color_temp_kelvin: 2700, ...ct }, 'salon'),
       S('media_player.salon_tv', 'on', { friendly_name: 'Téléviseur', source: 'HDMI 1' }, 'salon'),
       S('media_player.salon_enceinte', 'playing', { friendly_name: 'Enceinte', media_title: 'Lecture' }, 'salon'),
@@ -142,6 +144,29 @@ HD.DemoConnection = class DemoConnection {
       else if (service === 'set_hvac_mode') this.set(id, data.hvac_mode);
       else if (service === 'trigger') this.set(id, null, { last_triggered: new Date().toISOString() });
     }
+  }
+
+  // Plausible autumn week + next 24 hours.
+  subscribeForecast(entityId, type, onEvent) {
+    const conds = ['partlycloudy', 'rainy', 'cloudy', 'sunny', 'sunny', 'pouring', 'partlycloudy'];
+    const now = new Date();
+    let forecast;
+    if (type === 'hourly') {
+      forecast = Array.from({ length: 24 }, (_, i) => {
+        const d = new Date(now); d.setMinutes(0, 0, 0); d.setHours(d.getHours() + i + 1);
+        const h = d.getHours();
+        return { datetime: d.toISOString(), condition: h > 19 || h < 7 ? 'clear-night' : i > 14 ? 'rainy' : 'partlycloudy',
+          temperature: Math.round(14 + 4 * Math.sin((h - 9) / 24 * 2 * Math.PI)), precipitation_probability: i > 14 ? 60 : 10 };
+      });
+    } else {
+      forecast = conds.map((c, i) => {
+        const d = new Date(now); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + i);
+        return { datetime: d.toISOString(), condition: c, temperature: [16, 13, 14, 18, 19, 12, 15][i], templow: [9, 8, 7, 9, 11, 8, 6][i],
+          precipitation_probability: [10, 80, 30, 0, 5, 90, 20][i], wind_speed: [12, 25, 15, 8, 6, 30, 14][i] };
+      });
+    }
+    setTimeout(() => onEvent({ type, forecast }), 150);
+    return Promise.resolve();
   }
 
   close() { clearInterval(this.timer); }

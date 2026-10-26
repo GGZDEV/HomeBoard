@@ -37,8 +37,11 @@ window.HD = window.HD || {};
     const n = (k) => (isFinite(Number(o[k])) && o[k] !== '' && o[k] != null ? Number(o[k]) : TEMP_DEFAULTS[k]);
     return { lo: n('tLo'), hi: n('tHi'), hot: n('tHot') };
   }
+  // On by default; a module can switch it off (options.tempColors === false).
+  const tempColorsOn = (o) => !o || o.tempColors !== false;
   function tempZone(t, o) {
-    if (t == null || !o || !o.tempColors) return null;
+    if (t == null || !isFinite(t) || !tempColorsOn(o)) return null;
+    o = o || {};
     const th = tempThresholds(o);
     return t < th.lo ? ZONES[0] : t <= th.hi ? ZONES[1] : t <= th.hot ? ZONES[2] : ZONES[3];
   }
@@ -68,7 +71,8 @@ window.HD = window.HD || {};
     const seg = modes.length ? `<div class="segmented" style="grid-template-columns: repeat(${modes.length}, minmax(0, 1fr))">
       ${modes.map((x) => `<button aria-pressed="${st.state === x}" class="${st.state === x ? 'is-on' : ''}" data-act="mode" data-arg="${esc(x)}" data-key="${m.id}:mode:${esc(x)}">${esc(M.HVAC[x] || x)}</button>`).join('')}
     </div>` : '';
-    const cur = a.current_temperature != null ? `Actuel ${esc(M.fmtNum(a.current_temperature))}°` : '';
+    const zc = a.current_temperature != null ? tempZone(Number(a.current_temperature), m.options) : null;
+    const cur = a.current_temperature != null ? `Actuel <span${zc ? ` style="color: ${zc.color}; font-weight: 600"` : ''}>${esc(M.fmtNum(a.current_temperature))}°</span>` : '';
     const right = hum != null ? 'Hum. ' + esc(M.fmtNum(hum, 0)) + ' %' : '';
 
     if (m.h < 3) {
@@ -251,20 +255,83 @@ window.HD = window.HD || {};
   }
 
   // ---------- Weather ----------
-  function weather(m, list) {
+  const WX_ICON = {
+    sunny: 'sun', 'clear-night': 'moon', cloudy: 'cloud', partlycloudy: 'partly', fog: 'fog',
+    rainy: 'rain', pouring: 'rain', 'snowy-rainy': 'snow', snowy: 'snow', hail: 'snow',
+    lightning: 'storm', 'lightning-rainy': 'storm', windy: 'wind', 'windy-variant': 'wind', exceptional: 'spark'
+  };
+  const wxIcon = (cond) => IC[WX_ICON[cond]] || IC.cloud;
+
+  function dayLabel(iso, i) {
+    const d = new Date(iso);
+    if (!isFinite(d)) return '';
+    const today = new Date();
+    if (d.toDateString() === today.toDateString()) return 'Auj.';
+    const s = d.toLocaleDateString('fr-FR', { weekday: 'short' });
+    return i === 0 && d - today < 0 ? 'Auj.' : s.charAt(0).toUpperCase() + s.slice(1);
+  }
+
+  // Daily items (twice_daily is folded into one entry per day).
+  function dailyItems(fc) {
+    if (!fc || !fc.items || fc.type === 'hourly') return [];
+    if (fc.type !== 'twice_daily') return fc.items;
+    const byDay = new Map();
+    for (const f of fc.items) {
+      const k = new Date(f.datetime).toDateString();
+      const g = byDay.get(k) || { datetime: f.datetime, condition: f.condition, temperature: -Infinity, templow: Infinity, precipitation_probability: 0 };
+      g.temperature = Math.max(g.temperature, f.temperature);
+      g.templow = Math.min(g.templow, f.templow != null ? f.templow : f.temperature);
+      g.precipitation_probability = Math.max(g.precipitation_probability, f.precipitation_probability || 0);
+      if (f.is_daytime) g.condition = f.condition;
+      byDay.set(k, g);
+    }
+    return [...byDay.values()];
+  }
+
+  function weather(m, list, c) {
     const st = list[0];
     const a = st.attributes;
     const unit = a.temperature_unit || '°C';
+    const fc = c.forecast ? c.forecast(st) : null;
+    const days = dailyItems(fc);
+    const today = days[0];
     const extra = [
+      today && today.templow != null ? `${M.fmtNum(today.templow, 0)}° / ${M.fmtNum(today.temperature, 0)}°` : '',
       a.humidity != null ? 'Hum. ' + M.fmtNum(a.humidity, 0) + ' %' : '',
-      a.wind_speed != null ? 'Vent ' + M.fmtNum(a.wind_speed, 0) + ' ' + (a.wind_speed_unit || 'km/h') : ''
+      m.w > 1 && a.wind_speed != null ? 'Vent ' + M.fmtNum(a.wind_speed, 0) + ' ' + (a.wind_speed_unit || 'km/h') : ''
     ].filter(Boolean).join(' · ');
+    const z = tempZone(Number(a.temperature), m.options);
+
+    // More room = more forecast: a row of days when wide, a list when tall.
+    let more = '';
+    if (days.length && m.w >= 2) {
+      const n = Math.min(days.length, m.w === 2 ? 5 : 7);
+      more = `<span class="fc-row" style="grid-template-columns: repeat(${n}, minmax(0, 1fr))">${days.slice(0, n).map((f, i) => `
+        <span class="fc-day"><span class="muted small">${esc(dayLabel(f.datetime, i))}</span>${icon(wxIcon(f.condition), 22, 1.7)}
+        <span class="fc-hi">${esc(M.fmtNum(f.temperature, 0))}°</span><span class="muted small">${f.templow != null ? esc(M.fmtNum(f.templow, 0)) + '°' : ''}</span></span>`).join('')}</span>`;
+    } else if (days.length && m.h >= 3) {
+      more = `<span class="fc-list">${days.slice(1, m.h === 3 ? 4 : 6).map((f, i) => `
+        <span class="fc-line"><span class="fc-name">${esc(dayLabel(f.datetime, i + 1))}</span>${icon(wxIcon(f.condition), 18, 1.7)}
+        <span class="muted small">${f.templow != null ? esc(M.fmtNum(f.templow, 0)) + '°' : ''}</span><span class="fc-hi">${esc(M.fmtNum(f.temperature, 0))}°</span></span>`).join('')}</span>`;
+    }
+    const hint = fc && fc.items ?'<span class="fc-hint muted small">Touchez pour les prévisions détaillées</span>' : '';
     return head(m.title || 'Météo', esc(M.shortName(st))) + `
-    <div class="weather">
-      <span class="weather-ic">${icon(IC.cloud, 34, 1.6)}</span>
-      <span class="stack"><span class="dial-temp sm">${esc(M.fmtNum(a.temperature, 0))}<small>${esc(unit)}</small></span>
-      <span class="muted small">${esc(M.WEATHER[st.state] || st.state)}${extra ? ' · ' + esc(extra) : ''}</span></span>
-    </div>`;
+    <button class="weather-tap" data-act="weather-open" data-arg="${esc(st.entity_id)}" data-key="${m.id}:wx" aria-label="Prévisions détaillées ${esc(M.shortName(st))}">
+      <span class="weather">
+        <span class="weather-ic">${icon(wxIcon(st.state), 32, 1.6)}</span>
+        <span class="stack"><span class="dial-temp sm"${z ? ` style="color: ${z.color}"` : ''}>${esc(M.fmtNum(a.temperature, 0))}<small>${esc(unit)}</small></span>
+        <span class="muted small">${esc(M.WEATHER[st.state] || st.state)}${extra ? ' · ' + esc(extra) : ''}</span></span>
+      </span>
+      ${more}${m.h >= 2 && !more ? hint : ''}
+    </button>`;
+  }
+
+  // ---------- Notes ----------
+  function notes(m) {
+    const o = m.options || {};
+    const when = o.updated ? M.relTime(new Date(o.updated).toISOString()) : null;
+    return head(m.title || 'Notes', when ? 'Modifiée ' + esc(when) : '') +
+      `<textarea class="note" data-act="note" data-key="${m.id}:note" data-scroll="${m.id}:note" placeholder="Écrire une note… (courses, rappels, code wifi invités)" aria-label="${esc(m.title || 'Notes')}">${esc(o.text || '')}</textarea>`;
   }
 
   // ---------- Rooms overview ----------
@@ -273,7 +340,10 @@ window.HD = window.HD || {};
     return head(m.title || 'Pièces') + `<div class="room-cards" data-scroll="${m.id}">
     ${sums.map((v) => `
       <button class="card hov room-card" data-act="open-room" data-arg="${esc(v.room.id)}" data-key="${m.id}:${esc(v.room.id)}">
-        <span class="row-between"><span class="room-card-name">${esc(v.room.name)}</span>${v.temp != null ? `<span class="muted">${esc(M.fmtNum(v.temp))}°</span>` : ''}</span>
+        <span class="row-between"><span class="room-card-name">${esc(v.room.name)}</span>${v.temp != null ? (() => {
+          const z = tempZone(v.temp, m.options);
+          return `<span class="${z ? 'room-temp' : 'muted'}"${z ? ` style="color: ${z.color}" title="${z.name}"` : ''}>${esc(M.fmtNum(v.temp))}°</span>`;
+        })() : ''}</span>
         <span class="room-icons" aria-hidden="true">${v.activeIcons.slice(0, 5).map((p) => `<span class="mini-ic">${icon(p, 16)}</span>`).join('')}</span>
         <span class="muted small">${plural(v.active, 'actif', 'actifs')} sur ${v.total}</span>
       </button>`).join('')}</div>`;
@@ -315,11 +385,12 @@ window.HD = window.HD || {};
       pick: (s) => ['sensor', 'binary_sensor', 'input_number', 'counter'].includes(M.domainOf(s.entity_id)), render: sensor },
     energy: { name: 'Énergie', desc: 'Puissance instantanée et consommation.', icon: IC.bolt, w: 2, h: 2,
       pick: (s) => M.isSensorClass(s, 'power') || M.isSensorClass(s, 'energy'), render: energy },
-    weather: { name: 'Météo', desc: 'Température et conditions extérieures.', icon: IC.cloud, w: 1, h: 2, single: true, pick: dom('weather'), render: weather },
+    weather: { name: 'Météo', desc: 'Conditions actuelles ; agrandi, les prévisions de la semaine. Touchez-le pour le détail.', icon: IC.cloud, w: 2, h: 2, single: true, pick: dom('weather'), render: weather },
+    notes: { name: 'Notes', desc: 'Un mémo libre : liste de courses, rappels, code wifi invités… Enregistré dans votre compte.', icon: IC.note, w: 1, h: 2, noEntities: true, render: notes },
     automations: { name: 'Automatisations', desc: 'Activer/désactiver les automatisations, lancer les scripts.', icon: IC.robot, w: 2, h: 4,
       pick: (s) => ['automation', 'script'].includes(M.domainOf(s.entity_id)), render: automations },
     rooms: { name: 'Pièces', desc: 'Résumé de chaque pièce ; un clic ouvre la pièce.', icon: IC.home, w: 4, h: 2, noEntities: true, render: rooms }
   };
 
-  HD.Modules = { types: T, lightState, TONES, ACCENTS, ZONES, tempThresholds, tempZone };
+  HD.Modules = { types: T, lightState, TONES, ACCENTS, ZONES, tempThresholds, tempZone, tempColorsOn, wxIcon, dayLabel, dailyItems };
 })();

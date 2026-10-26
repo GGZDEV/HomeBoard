@@ -149,6 +149,11 @@ HD.HAConnection = class HAConnection {
     });
   }
 
+  // Weather forecast (HA 2023.9+). Events: { type: 'daily'|'hourly'|'twice_daily', forecast: [...] }.
+  subscribeForecast(entityId, forecastType, onEvent) {
+    return this.send({ type: 'weather/subscribe_forecast', entity_id: entityId, forecast_type: forecastType }, { onEvent });
+  }
+
   // Per-user storage inside Home Assistant: the layout follows you on every screen.
   getUserData(key) {
     return this.send({ type: 'frontend/get_user_data', key }).then((r) => (r ? r.value : null));

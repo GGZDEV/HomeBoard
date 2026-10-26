@@ -67,7 +67,8 @@
     app.error = null;
     L.init(conn, demo);
     conn.on('status', (s) => { if (app.conn === conn) { app.status = s === 'connected' && !app.index ? 'connecting' : s; queueRender(); } });
-    conn.on('ready', () => { if (app.conn === conn) loadAll(); });
+    // Subscriptions die with the socket: forget forecasts so they are re-requested.
+    conn.on('ready', () => { if (app.conn === conn) { app.forecasts = {}; loadAll(); } });
     conn.on('state', (ev) => {
       if (app.conn !== conn || !ev) return;
       if (ev.new_state) app.states.set(ev.entity_id, ev.new_state);
@@ -220,6 +221,9 @@
 
   function render() {
     if (app.dragging) { app.renderAfterDrag = true; return; }
+    // Typing a note: redrawing would break the (Android) keyboard; redraw when leaving the note.
+    const typing = document.activeElement;
+    if (typing && typing.classList && typing.classList.contains('note')) { app.renderAfterNote = true; return; }
     document.documentElement.style.setProperty('--accent', L.data.accent);
     M.setNames(L.data.names);
     const active = document.activeElement;
@@ -367,11 +371,11 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
 </div>` : '';
     const ctx = {
       states: app.states, index: app.index, global: !room, roomName: room ? room.name : null,
-      targetTemp, roomSummaries, roomOrder
+      targetTemp, roomSummaries, roomOrder, forecast: (st) => forecastFor(st, 'main')
     };
     const body = mods.map((m) => moduleView(m, ctx, e)).join('') +
       (app.editing ? `<button class="mod add-tile" style="grid-column: span 1; grid-row: span 2" data-act="add-open" data-key="add-tile">${icon(IC.plus, 26, 2)}<span>Ajouter un module</span></button>` : '');
-    const hint = app.editing ? `<p class="edit-hint muted small">Glissez les modules pour les réordonner · ${icon(IC.width, 14)} largeur · ${icon(IC.height, 14)} hauteur · ${icon(IC.gear, 14)} appareils et titre${L.isCustom(key) ? ' · <button class="link-btn" data-act="page-reset">Revenir à la disposition automatique</button>' : ''}</p>` : '';
+    const hint = app.editing ? `<p class="edit-hint muted small">Glissez les modules pour les réordonner · ${icon(IC.width, 14)} largeur · ${icon(IC.height, 14)} hauteur · ${icon(IC.palette, 14)} couleurs · ${icon(IC.gear, 14)} appareils, noms et titre${L.isCustom(key) ? ' · <button class="link-btn" data-act="page-reset">Revenir à la disposition automatique</button>' : ''}</p>` : '';
     return header(title, pageSummary(key, room, mods), true) + tabs + hint +
       (mods.length || app.editing
         ? `<div class="mods" data-scroll="page:${esc(key)}">${body}</div>`
@@ -398,7 +402,8 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
           <button aria-label="Déplacer après" data-act="mod-move" data-arg="1" data-key="${m.id}:mv+">${icon(IC.right, 16, 2.2)}</button>
           <button aria-label="Changer la largeur (${m.w} sur 4)" data-act="mod-w" data-key="${m.id}:w">${icon(IC.width, 16, 2)}</button>
           <button aria-label="Changer la hauteur (${m.h} sur 4)" data-act="mod-h" data-key="${m.id}:h">${icon(IC.height, 16, 2)}</button>
-          <button aria-label="Paramétrer le module" data-act="mod-config" data-key="${m.id}:cfg">${icon(IC.gear, 16, 2)}</button>
+          <button aria-label="Couleurs du module" title="Couleurs" data-act="mod-colors" data-key="${m.id}:col">${icon(IC.palette, 16, 2)}</button>
+          <button aria-label="Paramétrer le module" title="Paramètres" data-act="mod-config" data-key="${m.id}:cfg">${icon(IC.gear, 16, 2)}</button>
           <button aria-label="Supprimer le module" data-act="mod-del" data-key="${m.id}:del">${icon(IC.trash, 16, 2)}</button>
         </span>
       </div>` : '';
@@ -409,6 +414,27 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
 
   function emptyState(title, hint) {
     return `<div class="empty card"><p>${esc(title)}</p>${hint ? `<p class="muted small">${esc(hint)}</p>` : ''}</div>`;
+  }
+
+  // Weather forecast, subscribed on first use; HA pushes updates. kind: 'main' (daily) or 'hourly'.
+  function forecastFor(st, kind) {
+    if (!app.conn || !app.conn.subscribeForecast) return null;
+    app.forecasts = app.forecasts || {};
+    const f = Number(st.attributes.supported_features) || 0;
+    const type = kind === 'hourly' ? (f & 2 ? 'hourly' : null) : f & 1 ? 'daily' : f & 4 ? 'twice_daily' : f & 2 ? 'hourly' : null;
+    if (!type) return null;
+    const key = st.entity_id + ':' + type;
+    if (!app.forecasts[key]) {
+      const slot = app.forecasts[key] = { type, items: null };
+      const conn = app.conn;
+      conn.subscribeForecast(st.entity_id, type, (ev) => {
+        if (app.conn !== conn || !ev) return;
+        slot.items = ev.forecast || [];
+        slot.type = ev.type || type;
+        queueRender();
+      }).catch(() => { slot.error = true; });
+    }
+    return app.forecasts[key];
   }
 
   function targetTemp(st) {
@@ -422,6 +448,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
   function modalView() {
     const md = app.modal;
     let title, body, foot;
+    if (md.kind === 'weather') return weatherModal(md.entity);
     if (md.kind === 'add') {
       const e = env(pageRoom());
       const scope = pageRoom() ? 'room' : 'all';
@@ -490,21 +517,31 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
           <button type="button" class="tone tone-default${!accent ? ' is-on' : ''}" aria-pressed="${!accent}" aria-label="Couleur par défaut" title="Par défaut" data-act="draft-accent" data-arg="" data-key="da:"><span style="background: ${L.data.accent}"></span></button>
           ${HD.Modules.ACCENTS.map((c) => `<button type="button" class="tone${accent === c ? ' is-on' : ''}" aria-pressed="${accent === c}" aria-label="Couleur ${c}" data-act="draft-accent" data-arg="${c}" data-key="da:${c}"><span style="background: ${c}"></span></button>`).join('')}
         </div></div>`;
-      // Thermometers: color by temperature with editable thresholds.
+      // Modules showing temperatures: color by temperature with editable thresholds (on by default).
       let tempColors = '';
-      if (d.type === 'temperature') {
+      if (['temperature', 'rooms', 'climate', 'weather'].includes(d.type)) {
         const th = HD.Modules.tempThresholds(d.options);
         const Z = HD.Modules.ZONES;
+        const on = HD.Modules.tempColorsOn(d.options);
         const num = (k, v) => `<input class="num" type="number" step="0.5" value="${v}" data-act="draft-opt" data-arg="${k}" data-key="opt:${k}" aria-label="Seuil ${k}">`;
         tempColors = `
         <div class="field-row"><span class="field-label">Couleur selon la température</span>
-          <button type="button" class="switch${d.options.tempColors ? ' is-on' : ''}" role="switch" aria-checked="${!!d.options.tempColors}" data-act="draft-tempcolors" data-key="draft-tempcolors"><span></span></button></div>
-        ${d.options.tempColors ? `<div class="zones">
+          <button type="button" class="switch${on ? ' is-on' : ''}" role="switch" aria-checked="${on}" data-act="draft-tempcolors" data-key="draft-tempcolors"><span></span></button></div>
+        ${on ? `<div class="zones">
           <span class="zone"><i style="background: ${Z[0].color}"></i>${Z[0].name} &lt; ${num('tLo', th.lo)}°</span>
           <span class="zone"><i style="background: ${Z[1].color}"></i>${Z[1].name} jusqu'à ${num('tHi', th.hi)}°</span>
           <span class="zone"><i style="background: ${Z[2].color}"></i>${Z[2].name} jusqu'à ${num('tHot', th.hot)}°</span>
           <span class="zone"><i style="background: ${Z[3].color}"></i>${Z[3].name} au-delà</span>
         </div>` : ''}`;
+      }
+      if (md.only === 'colors') {
+        // Shortcut from the 🎨 button: only the color settings.
+        title = 'Couleurs · ' + (d.title || t.name);
+        body = `${colors}${tempColors}<p class="muted small">La couleur s'applique aux icônes, barres, cadrans et tuiles allumées de ce module.${tempColors ? ' Les zones colorent les températures affichées (valeur et barre).' : ''}</p>`;
+        foot = `<span class="grow"></span>
+          <button class="btn-glass" data-act="modal-close" data-key="modal-close">Annuler</button>
+          <button class="btn-solid" data-act="modal-save" data-key="modal-save">Enregistrer</button>`;
+        return modalFrame(title, body, foot);
       }
       body = `
         <label class="field"><span>Titre</span><input type="text" value="${esc(d.title)}" placeholder="${esc(t.name)}" data-act="draft-title" data-key="draft-title"></label>
@@ -520,6 +557,75 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
         <button class="btn-glass" data-act="modal-close" data-key="modal-close">Annuler</button>
         <button class="btn-solid" data-act="modal-save" data-key="modal-save">Enregistrer</button>`;
     }
+    return modalFrame(title, body, foot);
+  }
+
+  // Detailed weather: current details, next 24 hours, the week.
+  function weatherModal(id) {
+    const close = `<span class="grow"></span><button class="btn-solid" data-act="modal-close" data-key="modal-close">Fermer</button>`;
+    const st = app.states.get(id);
+    if (!st) return modalFrame('Météo', '<p class="muted">Entité météo introuvable.</p>', close);
+    const W = HD.Modules;
+    const a = st.attributes;
+    const unit = a.temperature_unit || '°C';
+    const main = forecastFor(st, 'main');
+    const days = W.dailyItems(main);
+    const hourlyFc = forecastFor(st, 'hourly');
+    const hourly = hourlyFc && hourlyFc.items ? hourlyFc.items.slice(0, 24) : (main && main.type === 'hourly' && main.items ? main.items.slice(0, 24) : []);
+    const dir = (b) => ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'][Math.round(Number(b) / 45) % 8];
+    const facts = [
+      ['Ressenti', a.apparent_temperature != null && M.fmtNum(a.apparent_temperature, 0) + '°'],
+      ['Humidité', a.humidity != null && M.fmtNum(a.humidity, 0) + ' %'],
+      ['Vent', a.wind_speed != null && M.fmtNum(a.wind_speed, 0) + ' ' + (a.wind_speed_unit || 'km/h') + (a.wind_bearing != null ? ' ' + dir(a.wind_bearing) : '')],
+      ['Rafales', a.wind_gust_speed != null && M.fmtNum(a.wind_gust_speed, 0) + ' ' + (a.wind_speed_unit || 'km/h')],
+      ['Pression', a.pressure != null && M.fmtNum(a.pressure, 0) + ' ' + (a.pressure_unit || 'hPa')],
+      ['Point de rosée', a.dew_point != null && M.fmtNum(a.dew_point, 0) + '°'],
+      ['Indice UV', a.uv_index != null && M.fmtNum(a.uv_index, 0)],
+      ['Visibilité', a.visibility != null && M.fmtNum(a.visibility, 0) + ' ' + (a.visibility_unit || 'km')],
+      ['Nuages', a.cloud_coverage != null && M.fmtNum(a.cloud_coverage, 0) + ' %']
+    ].filter((f) => f[1]);
+    const zNow = W.tempZone(Number(a.temperature), {});
+    let body = `
+      <div class="wx-now">
+        <span class="weather-ic lg">${icon(W.wxIcon(st.state), 40, 1.5)}</span>
+        <span class="stack"><span class="dial-temp"${zNow ? ` style="color: ${zNow.color}"` : ''}>${esc(M.fmtNum(a.temperature, 0))}<small>${esc(unit)}</small></span>
+        <span class="muted">${esc(M.WEATHER[st.state] || st.state)}${days[0] && days[0].templow != null ? ' · ' + esc(M.fmtNum(days[0].templow, 0)) + '° / ' + esc(M.fmtNum(days[0].temperature, 0)) + '°' : ''}</span></span>
+      </div>
+      ${facts.length ? `<div class="wx-facts">${facts.map(([k, v]) => `<span class="wx-fact"><span class="muted small">${k}</span><span>${esc(v)}</span></span>`).join('')}</div>` : ''}`;
+    if (hourly.length) {
+      body += `<h3 class="wx-h">Prochaines heures</h3>
+      <div class="wx-hours" data-scroll="wx-hours">${hourly.map((h) => {
+        const d = new Date(h.datetime);
+        return `<span class="wx-hour"><span class="muted small">${d.getHours()} h</span>${icon(W.wxIcon(h.condition), 22, 1.7)}
+          <span class="fc-hi">${esc(M.fmtNum(h.temperature, 0))}°</span>
+          <span class="wx-rain">${h.precipitation_probability ? esc(M.fmtNum(h.precipitation_probability, 0)) + ' %' : ''}</span></span>`;
+      }).join('')}</div>`;
+    }
+    if (days.length) {
+      const lo = Math.min(...days.map((f) => (f.templow != null ? f.templow : f.temperature)));
+      const hi = Math.max(...days.map((f) => f.temperature));
+      const span = hi - lo || 1;
+      body += `<h3 class="wx-h">${days.length} jours</h3><ul class="wx-days">${days.map((f, i) => {
+        const low = f.templow != null ? f.templow : f.temperature;
+        const zl = W.tempZone(low, {}) || { color: 'var(--accent)' };
+        const zh = W.tempZone(f.temperature, {}) || { color: 'var(--accent)' };
+        return `<li class="wx-day">
+          <span class="fc-name">${esc(W.dayLabel(f.datetime, i))}</span>
+          <span class="wx-day-ic">${icon(W.wxIcon(f.condition), 22, 1.7)}<span class="wx-rain">${f.precipitation_probability ? esc(M.fmtNum(f.precipitation_probability, 0)) + ' %' : ''}</span></span>
+          <span class="muted wx-lo">${esc(M.fmtNum(low, 0))}°</span>
+          <span class="wx-range"><span style="left: ${((low - lo) / span) * 100}%; width: ${Math.max(6, ((f.temperature - low) / span) * 100)}%; background: linear-gradient(90deg, ${zl.color}, ${zh.color})"></span></span>
+          <span class="fc-hi">${esc(M.fmtNum(f.temperature, 0))}°</span>
+        </li>`;
+      }).join('')}</ul>`;
+    } else if (main && !main.items && !main.error) {
+      body += '<p class="muted">Chargement des prévisions…</p>';
+    } else {
+      body += '<p class="muted">Cette entité météo ne fournit pas de prévisions.</p>';
+    }
+    return modalFrame(M.shortName(st) + ' · Météo', body, close);
+  }
+
+  function modalFrame(title, body, foot) {
     return `<div class="modal-backdrop" data-act="modal-close">
       <div class="glass modal" role="dialog" aria-modal="true" aria-label="${esc(title)}" data-stop>
         <header class="modal-head"><h2>${esc(title)}</h2><button class="card hov round-btn" aria-label="Fermer" data-act="modal-close" data-key="modal-x">${icon(IC.x, 18, 2)}</button></header>
@@ -644,10 +750,10 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
 
   function moduleIndex(mods, id) { return mods.findIndex((x) => x.id === id); }
 
-  function openConfig(id) {
+  function openConfig(id, only) {
     const m = L.modules(pageKey(), env(pageRoom())).find((x) => x.id === id);
     if (!m) return;
-    app.modal = { kind: 'config', id, draft: JSON.parse(JSON.stringify(m)), search: '', names: { ...L.data.names } };
+    app.modal = { kind: 'config', id, only: only || null, draft: JSON.parse(JSON.stringify(m)), search: '', names: { ...L.data.names } };
     render();
   }
 
@@ -760,7 +866,9 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       else delete app.modal.draft.options.accent;
       render();
     },
-    'draft-tempcolors'() { const o = app.modal.draft.options; o.tempColors = !o.tempColors; render(); },
+    'draft-tempcolors'() { const o = app.modal.draft.options; o.tempColors = !HD.Modules.tempColorsOn(o); render(); },
+    'mod-colors'(arg, el) { openConfig(el.closest('[data-mod]').dataset.mod, 'colors'); },
+    'weather-open'(arg) { app.modal = { kind: 'weather', entity: arg }; render(); },
     'modal-save'() {
       const d = app.modal.draft;
       // Labels are shared by all modules: store them next to the layout.
@@ -847,6 +955,17 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       const num = host.querySelector('[data-bri-num]');
       if (fill) fill.style.width = e.target.value + '%';
       if (num) num.textContent = e.target.value + ' %';
+    } else if (act === 'note') {
+      // Save the note into the page layout (synced with the HA account), debounced.
+      const id = e.target.closest('[data-mod]').dataset.mod;
+      const mods = L.materialize(pageKey(), env(pageRoom()));
+      const m = mods.find((x) => x.id === id);
+      if (m) {
+        m.options.text = e.target.value.slice(0, 20000);
+        m.options.updated = Date.now();
+        clearTimeout(app.noteTimer);
+        app.noteTimer = setTimeout(() => L.save(), 700);
+      }
     } else if (act === 'draft-title') {
       app.modal.draft.title = e.target.value;
     } else if (act === 'rename') {
@@ -924,6 +1043,13 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     });
   });
   $app.addEventListener('dragend', () => { if (app.dragId) { app.dragId = null; render(); } });
+
+  // Leaving a note: save right away and catch up on updates skipped while typing.
+  $app.addEventListener('focusout', (e) => {
+    if (!e.target.classList || !e.target.classList.contains('note')) return;
+    if (app.noteTimer) { clearTimeout(app.noteTimer); app.noteTimer = null; L.save(); }
+    if (app.renderAfterNote) { app.renderAfterNote = false; setTimeout(render, 0); }
+  });
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && app.modal) { app.modal = null; render(); }

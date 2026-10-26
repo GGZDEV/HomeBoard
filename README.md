@@ -61,7 +61,8 @@ automatiquement à partir des appareils trouvés (les nouveaux appareils apparai
 | **Capteurs** | n'importe quelle valeur (CO₂, luminosité, batterie…), à choisir |
 | **Scènes** | `scene.*` (celles de la pièce, sinon celles sans zone) |
 | **Énergie** | capteurs `power` / `energy` |
-| **Météo** | `weather.*` |
+| **Météo** | `weather.*` ; en largeur ≥ 2 ou hauteur ≥ 3, les prévisions des jours suivants ; un toucher ouvre le détail (ressenti, vent, pression, 24 h, 7 jours) |
+| **Notes** | mémo libre, enregistré automatiquement dans votre compte Home Assistant |
 | **Automatisations** | activer/désactiver `automation.*`, lancer `script.*` |
 | **Pièces** | résumé de chaque pièce, un clic ouvre la pièce |
 

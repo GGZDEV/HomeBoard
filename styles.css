@@ -265,7 +265,47 @@ button.tile.is-on:hover { background: #fff; }
 .energy-row { border-radius: 18px; padding: 12px 14px; background: var(--glass-card); display: flex; flex-direction: column; gap: 10px; }
 .meter { height: 8px; border-radius: 4px; background: var(--glass-chip); overflow: hidden; }
 .meter span { display: block; height: 100%; border-radius: 4px; background: var(--accent); }
-.weather { flex: 1; display: flex; align-items: center; gap: 16px; }
+.weather { display: flex; align-items: center; gap: 16px; }
+.weather-tap {
+  flex: 1; min-height: 0; width: 100%; border: none; background: none; color: inherit; font: inherit; text-align: left;
+  padding: 0; display: flex; flex-direction: column; justify-content: space-between; gap: 12px; cursor: pointer; border-radius: 18px;
+}
+.weather-tap:hover .weather-ic { background: var(--glass-hover); }
+.fc-row { display: grid; gap: 6px; }
+.fc-day { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 2px; border-radius: 16px; background: var(--glass-card); }
+.fc-hi { font-size: 15px; font-weight: 600; }
+.fc-list { display: flex; flex-direction: column; gap: 6px; }
+.fc-line { display: grid; grid-template-columns: 48px 22px 1fr auto; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 14px; background: var(--glass-card); }
+.fc-line .muted { text-align: right; }
+.fc-name { font-size: 14px; font-weight: 600; }
+.fc-hint { opacity: 0.8; }
+.room-temp { font-weight: 600; }
+
+/* Weather details window */
+.wx-now { display: flex; align-items: center; gap: 18px; }
+.weather-ic.lg { width: 72px; height: 72px; border-radius: 36px; }
+.wx-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
+.wx-fact { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 14px; background: var(--glass-card); font-size: 15px; font-weight: 600; }
+.wx-h { margin: 6px 0 0; font-size: 15px; font-weight: 600; color: var(--fg-muted); }
+.wx-hours { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; scrollbar-width: thin; }
+.wx-hour { flex: none; width: 58px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 0; border-radius: 16px; background: var(--glass-card); }
+.wx-rain { font-size: 11px; font-weight: 600; color: #64D2FF; min-height: 14px; }
+.wx-days { display: flex; flex-direction: column; gap: 6px; }
+.wx-day { display: grid; grid-template-columns: 52px 54px 36px minmax(60px, 1fr) 40px; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 14px; background: var(--glass-card); }
+.wx-day-ic { display: flex; flex-direction: column; align-items: center; }
+.wx-lo { text-align: right; font-size: 15px; }
+.wx-range { position: relative; height: 8px; border-radius: 4px; background: var(--glass-chip); }
+.wx-range span { position: absolute; top: 0; bottom: 0; border-radius: 4px; }
+.wx-day .fc-hi { text-align: right; }
+
+/* Notes */
+.note {
+  flex: 1; min-height: 60px; width: 100%; resize: none; border: none; border-radius: 16px; padding: 12px 14px;
+  background: rgba(0, 0, 0, 0.16); color: #fff; font: inherit; font-size: 16px; line-height: 1.5;
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+.note::placeholder { color: rgba(255, 255, 255, 0.5); }
+.note:focus { outline: none; box-shadow: inset 0 0 0 2px var(--accent); background: rgba(0, 0, 0, 0.24); }
 .weather-ic { width: 60px; height: 60px; border-radius: 30px; flex: none; background: var(--glass-chip); display: flex; align-items: center; justify-content: center; }
 
 /* Rooms overview */
