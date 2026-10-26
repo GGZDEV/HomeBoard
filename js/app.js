@@ -294,13 +294,38 @@
 ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
   }
 
+  // ---------- fullscreen (Android tablets: no app to install) ----------
+  const fsEl = () => document.fullscreenElement || document.webkitFullscreenElement || null;
+  const fsSupported = () => !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+  function enterFs() {
+    const el = document.documentElement;
+    const req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (!req) return;
+    try {
+      const p = req.call(el, { navigationUI: 'hide' });
+      if (p && p.catch) p.catch(() => {});
+    } catch (e) { /* refused: needs a tap */ }
+  }
+  function exitFs() {
+    const ex = document.exitFullscreen || document.webkitExitFullscreen;
+    if (ex) { const p = ex.call(document); if (p && p.catch) p.catch(() => {}); }
+  }
+  ['fullscreenchange', 'webkitfullscreenchange'].forEach((ev) => document.addEventListener(ev, () => queueRender()));
+  // "Plein écran automatique": any tap re-enters fullscreen (browsers only allow it after a tap).
+  document.addEventListener('pointerup', () => {
+    if (store.get('hd.autofs', false) && fsSupported() && !fsEl()) enterFs();
+  }, true);
+
   function header(title, summary, editable) {
     const t = outdoorTemp();
+    const fs = fsSupported() && !app.editing
+      ? `<button class="card hov round-btn" data-act="fullscreen" data-key="fullscreen" aria-label="${fsEl() ? 'Quitter le plein écran' : 'Plein écran'}" title="${fsEl() ? 'Quitter le plein écran' : 'Plein écran'}">${icon(fsEl() ? IC.shrink : IC.expand, 19, 2)}</button>` : '';
     return `
 <header class="page-head">
   <div class="titles"><h1>${esc(title)}</h1><p class="muted">${esc(summary)}</p></div>
   <div class="head-actions">
     ${t != null && !app.editing ? `<div class="card chip">${icon(IC.cloud)}<span>Extérieur ${esc(M.fmtNum(t, 0))}°</span></div>` : ''}
+    ${fs}
     ${editable && app.editing ? `<button class="btn-glass" data-act="add-open" data-key="add-open">${icon(IC.plus, 18, 2)} Module</button>` : ''}
     ${editable ? `<button class="${app.editing ? 'btn-solid' : 'card hov round-btn'}" data-act="edit-toggle" data-key="edit-toggle" aria-label="${app.editing ? 'Terminer la personnalisation' : 'Personnaliser cette page'}" title="Personnaliser">${app.editing ? icon(IC.check, 18, 2.2) + ' Terminé' : icon(IC.pencil, 19)}</button>` : ''}
   </div>
@@ -569,6 +594,14 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
   </section>
 
   <section class="list-section">
+    <h2>Cet appareil</h2>
+    <div class="card list-item">
+      <span class="stack grow"><span>Plein écran automatique</span><span class="muted small">${fsSupported() ? 'Le premier toucher passe la page en plein écran, et y revient si on en sort. Réglage propre à cet appareil.' : 'Ce navigateur ne permet pas le plein écran.'}</span></span>
+      <button class="switch${store.get('hd.autofs', false) ? ' is-on' : ''}" role="switch" aria-checked="${!!store.get('hd.autofs', false)}" aria-label="Plein écran automatique" data-act="autofs" data-key="autofs" ${fsSupported() ? '' : 'disabled'}><span></span></button>
+    </div>
+  </section>
+
+  <section class="list-section">
     <h2>Couleur d'accent par défaut</h2>
     <p class="muted small">Chaque module peut avoir sa propre couleur (⚙ en mode personnalisation).</p>
     <div class="row wrap">${ACCENTS.map((c) => `<button class="tone${L.data.accent === c ? ' is-on' : ''}" aria-label="Accent ${c}" aria-pressed="${L.data.accent === c}" data-act="accent" data-arg="${c}" data-key="accent:${c}"><span style="background: ${c}"></span></button>`).join('')}</div>
@@ -761,6 +794,13 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       L.resetAll(); showToast('Disposition réinitialisée.');
     },
     reload() { loadAll(); },
+    fullscreen() { if (fsEl()) exitFs(); else enterFs(); },
+    autofs() {
+      const on = !store.get('hd.autofs', false);
+      store.set('hd.autofs', on);
+      if (on && !fsEl()) enterFs();
+      render();
+    },
     logout() { logout(); },
     demo() { store.set('hd.conn', { demo: true }); startConnection(new HD.DemoConnection(), true); },
     // Reuse an HA session if there is one, otherwise open HA's login page (comes back with ?code=…).
