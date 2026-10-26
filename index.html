@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#8f7a66">
+<title>Maison</title>
+<script>
+// Anti-cache : Home Assistant sert /local avec un cache long. version.json est lu sans cache ;
+// si une version plus récente est publiée, on recharge index.html?v=<version> (nouvelle URL = pas de cache).
+(function () {
+  var v = 'dev';
+  fetch('version.json', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) {
+    if (!j.v || j.v === v) return;
+    var u = new URL(location.href);
+    if (u.searchParams.get('v') === j.v) return;
+    u.searchParams.set('v', j.v);
+    location.replace(u.href);
+  }).catch(function () {});
+})();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css?v=dev">
+</head>
+<body>
+<div class="scene" aria-hidden="true">
+  <div class="scene-inner">
+    <div class="b-wall"></div>
+    <div class="b-window"></div>
+    <div class="b-mullion"></div>
+    <div class="b-floor"></div>
+    <div class="b-rug"></div>
+    <div class="b-sofa"></div>
+    <div class="b-cushion b-cushion-1"></div>
+    <div class="b-cushion b-cushion-2"></div>
+    <div class="b-plant"></div>
+    <div class="b-lamp"></div>
+  </div>
+</div>
+<div id="app"></div>
+<script src="js/icons.js?v=dev"></script>
+<script src="js/ha.js?v=dev"></script>
+<script src="js/demo.js?v=dev"></script>
+<script src="js/model.js?v=dev"></script>
+<script src="js/modules.js?v=dev"></script>
+<script src="js/layout.js?v=dev"></script>
+<script src="js/app.js?v=dev"></script>
+</body>
+</html>
