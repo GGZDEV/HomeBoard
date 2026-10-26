@@ -298,6 +298,27 @@ button.tile.is-on:hover { background: #fff; }
 .wx-range span { position: absolute; top: 0; bottom: 0; border-radius: 4px; }
 .wx-day .fc-hi { text-align: right; }
 
+/* Calendar */
+.cal-legend { display: inline-flex; align-items: center; gap: 5px; margin-left: 10px; }
+.cal-legend i, .ev-cal i { width: 10px; height: 10px; border-radius: 5px; flex: none; }
+.cal-scroll { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; display: flex; flex-direction: column; gap: 6px; }
+.cal-day { margin: 6px 0 0; font-size: 13px; font-weight: 600; color: var(--fg-muted); text-transform: none; }
+.cal-day:first-child { margin-top: 0; }
+.cal-list { display: flex; flex-direction: column; gap: 6px; }
+.cal-ev {
+  width: 100%; min-height: 50px; border: none; border-radius: 16px; padding: 8px 12px 8px 10px;
+  display: flex; align-items: center; gap: 12px; text-align: left; font: inherit; color: #fff;
+  background: var(--glass-card); transition: background 0.2s ease;
+}
+.cal-ev:hover { background: var(--glass-hover); }
+.cal-bar { width: 4px; align-self: stretch; border-radius: 2px; background: var(--cal); flex: none; }
+.cal-title { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-ev .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ev-cal { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: var(--fg-muted); }
+.ev-when { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border-radius: 14px; background: var(--glass-card); }
+.ev-line { display: flex; align-items: center; gap: 10px; font-size: 15px; }
+.ev-desc { white-space: pre-wrap; font-size: 15px; line-height: 1.5; padding: 12px 14px; border-radius: 14px; background: var(--glass-card); margin: 0; }
+
 /* Notes */
 .note {
   flex: 1; min-height: 60px; width: 100%; resize: none; border: none; border-radius: 16px; padding: 12px 14px;

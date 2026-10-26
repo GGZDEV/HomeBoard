@@ -68,6 +68,8 @@ HD.DemoConnection = class DemoConnection {
       S('scene.cinema', ago(1), { friendly_name: 'Cinéma', entity_id: ['light.salon_plafonnier', 'media_player.salon_tv'] }),
       S('scene.nuit', ago(20), { friendly_name: 'Nuit', entity_id: ['light.salon_plafonnier', 'climate.chambre'] }),
       S('scene.absent', 'unknown', { friendly_name: 'Absent', entity_id: [] }),
+      S('calendar.famille', 'off', { friendly_name: 'Famille', message: 'Piscine Léa' }),
+      S('calendar.travail', 'off', { friendly_name: 'Travail', message: 'Point équipe' }),
       S('automation.lever_stores', 'on', { friendly_name: 'Ouvrir les stores au lever du soleil', last_triggered: ago(9) }),
       S('automation.extinction', 'on', { friendly_name: 'Tout éteindre à minuit', last_triggered: ago(15) }),
       S('automation.alerte_fuite', 'off', { friendly_name: 'Alerte fuite d\'eau', last_triggered: null }),
@@ -144,6 +146,31 @@ HD.DemoConnection = class DemoConnection {
       else if (service === 'set_hvac_mode') this.set(id, data.hvac_mode);
       else if (service === 'trigger') this.set(id, null, { last_triggered: new Date().toISOString() });
     }
+  }
+
+  // A family calendar and a work calendar over the next days.
+  fetchCalendarEvents(entityId, start, end) {
+    const at = (dayOffset, h, m) => { const d = new Date(); d.setHours(h, m || 0, 0, 0); d.setDate(d.getDate() + dayOffset); return d.toISOString(); };
+    const day = (dayOffset) => { const d = new Date(); d.setDate(d.getDate() + dayOffset); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+    const E = (summary, s, e, extra) => Object.assign({ summary, start: s, end: e, uid: entityId + summary + JSON.stringify(s) }, extra || {});
+    const all = {
+      'calendar.famille': [
+        E('Piscine Léa', { dateTime: at(0, 17, 30) }, { dateTime: at(0, 18, 30) }, { location: 'Centre aquatique' }),
+        E('Anniversaire de Mamie', { date: day(2) }, { date: day(3) }, { description: 'Apporter le gâteau au chocolat.' }),
+        E('Dîner chez les Martin', { dateTime: at(3, 20, 0) }, { dateTime: at(3, 23, 0) }, { location: '12 rue des Lilas' }),
+        E('Vacances de la Toussaint', { date: day(5) }, { date: day(12) })
+      ],
+      'calendar.travail': [
+        E('Point équipe', { dateTime: at(0, 9, 30) }, { dateTime: at(0, 10, 0) }, { location: 'Visio' }),
+        E('Rendez-vous client', { dateTime: at(1, 14, 0) }, { dateTime: at(1, 15, 30) }, { location: 'Lyon', description: 'Présentation du devis.\nPrévoir 30 min de trajet.' }),
+        E('Revue trimestrielle', { dateTime: at(4, 10, 0) }, { dateTime: at(4, 12, 0) })
+      ]
+    };
+    const items = (all[entityId] || []).filter((ev) => {
+      const s = new Date(ev.start.dateTime || ev.start.date + 'T00:00:00');
+      return s < end && s >= new Date(start.getTime() - 86400000 * 7);
+    });
+    return new Promise((resolve) => setTimeout(() => resolve(items), 120));
   }
 
   // Plausible autumn week + next 24 hours.

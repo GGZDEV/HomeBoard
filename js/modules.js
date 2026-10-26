@@ -326,6 +326,90 @@ window.HD = window.HD || {};
     </button>`;
   }
 
+  // ---------- Calendar ----------
+  const CAL_COLORS = ['#0A84FF', '#FF9F0A', '#30D158', '#BF5AF2', '#FF375F', '#64D2FF', '#FFD60A'];
+
+  // HA gives { dateTime } for timed events and { date: 'YYYY-MM-DD' } for all-day ones (end exclusive).
+  function parseWhen(w) {
+    if (!w) return null;
+    if (w.dateTime) return new Date(w.dateTime);
+    const p = String(w.date || w).split('-').map(Number);
+    return p.length === 3 ? new Date(p[0], p[1] - 1, p[2]) : new Date(w);
+  }
+  const startOfDay = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+  const hm = (d) => d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  const shortDate = (d) => d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+
+  function calEvents(list, raw) {
+    const out = [];
+    list.forEach((st, i) => {
+      const items = (raw && raw[st.entity_id]) || [];
+      for (const ev of items) {
+        const start = parseWhen(ev.start), end = parseWhen(ev.end) || start;
+        if (!start || !isFinite(start)) continue;
+        out.push({
+          cal: st.entity_id, calName: M.shortName(st), color: CAL_COLORS[i % CAL_COLORS.length],
+          title: ev.summary || '(Sans titre)', start, end, allDay: !!(ev.start && ev.start.date && !ev.start.dateTime),
+          location: ev.location || '', description: ev.description || ''
+        });
+      }
+    });
+    return out.sort((a, b) => a.start - b.start || (b.allDay - a.allDay));
+  }
+
+  function dayTitle(d) {
+    const today = startOfDay(new Date());
+    const diff = Math.round((startOfDay(d) - today) / 86400000);
+    if (diff === 0) return "Aujourd'hui";
+    if (diff === 1) return 'Demain';
+    const s = d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'short' });
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+
+  function whenLabel(ev) {
+    const now = new Date();
+    if (ev.allDay) {
+      const lastDay = new Date(ev.end.getTime() - 1);
+      return startOfDay(lastDay) > startOfDay(ev.start) ? "Jusqu'au " + shortDate(lastDay) : 'Journée';
+    }
+    if (ev.start <= now && ev.end > now) return 'En cours · jusqu\'à ' + hm(ev.end);
+    const sameDay = startOfDay(ev.end).getTime() === startOfDay(ev.start).getTime();
+    return hm(ev.start) + ' – ' + (sameDay ? hm(ev.end) : shortDate(ev.end) + ' ' + hm(ev.end));
+  }
+
+  function calendar(m, list, c) {
+    const days = Number(m.options && m.options.days) || 7;
+    const data = c.calendar(list, days);
+    const events = calEvents(list, data.raw).filter((ev) => ev.end > new Date());
+    c.rememberEvents(m.id, events);
+    const legend = list.length > 1 && m.w > 1
+      ? list.map((st, i) => `<span class="cal-legend"><i style="background: ${CAL_COLORS[i % CAL_COLORS.length]}"></i>${esc(M.shortName(st))}</span>`).join('') : '';
+    const title = m.title || 'Agenda';
+    if (!events.length) {
+      const msg = data.error ? data.error : data.loading ? 'Chargement des événements…' : `Rien de prévu ${days === 1 ? "aujourd'hui" : 'sur les ' + days + ' prochains jours'}.`;
+      return head(title, legend) + `<div class="mod-empty"><p class="muted small">${esc(msg)}</p></div>`;
+    }
+    const item = (ev, idx) => `<li><button class="cal-ev" data-act="event-open" data-arg="${esc(m.id)}|${idx}" data-key="${m.id}:ev${idx}" style="--cal: ${ev.color}">
+      <span class="cal-bar" aria-hidden="true"></span>
+      <span class="stack grow"><span class="cal-title">${esc(ev.title)}</span>
+      <span class="muted small">${esc(whenLabel(ev))}${ev.location ? ' · ' + esc(ev.location) : ''}${list.length > 1 && m.w === 1 ? ' · ' + esc(ev.calName) : ''}</span></span>
+    </button></li>`;
+    // Small box: only the next event.
+    if (m.h === 1) return head(title, dayTitle(events[0].start < new Date() ? new Date() : events[0].start)) + `<ul class="cal-list">${item(events[0], 0)}</ul>`;
+    // Agenda grouped by day (ongoing events count for today).
+    const today = startOfDay(new Date());
+    let html = '', lastDay = null;
+    events.forEach((ev, idx) => {
+      const day = ev.start < today ? today : startOfDay(ev.start);
+      if (!lastDay || day.getTime() !== lastDay.getTime()) {
+        html += `${lastDay ? '</ul>' : ''}<h3 class="cal-day">${esc(dayTitle(day))}</h3><ul class="cal-list">`;
+        lastDay = day;
+      }
+      html += item(ev, idx);
+    });
+    return head(title, legend) + `<div class="cal-scroll" data-scroll="${m.id}">${html}</ul></div>`;
+  }
+
   // ---------- Notes ----------
   function notes(m) {
     const o = m.options || {};
@@ -386,11 +470,13 @@ window.HD = window.HD || {};
     energy: { name: 'Énergie', desc: 'Puissance instantanée et consommation.', icon: IC.bolt, w: 2, h: 2,
       pick: (s) => M.isSensorClass(s, 'power') || M.isSensorClass(s, 'energy'), render: energy },
     weather: { name: 'Météo', desc: 'Conditions actuelles ; agrandi, les prévisions de la semaine. Touchez-le pour le détail.', icon: IC.cloud, w: 2, h: 2, single: true, pick: dom('weather'), render: weather },
+    calendar: { name: 'Calendrier', desc: 'Agenda des prochains jours depuis vos calendriers Home Assistant (Google, iCal, local…).', icon: IC.calendar, w: 2, h: 3,
+      pick: dom('calendar'), render: calendar },
     notes: { name: 'Notes', desc: 'Un mémo libre : liste de courses, rappels, code wifi invités… Enregistré dans votre compte.', icon: IC.note, w: 1, h: 2, noEntities: true, render: notes },
     automations: { name: 'Automatisations', desc: 'Activer/désactiver les automatisations, lancer les scripts.', icon: IC.robot, w: 2, h: 4,
       pick: (s) => ['automation', 'script'].includes(M.domainOf(s.entity_id)), render: automations },
     rooms: { name: 'Pièces', desc: 'Résumé de chaque pièce ; un clic ouvre la pièce.', icon: IC.home, w: 4, h: 2, noEntities: true, render: rooms }
   };
 
-  HD.Modules = { types: T, lightState, TONES, ACCENTS, ZONES, tempThresholds, tempZone, tempColorsOn, wxIcon, dayLabel, dailyItems };
+  HD.Modules = { types: T, lightState, TONES, ACCENTS, ZONES, tempThresholds, tempZone, tempColorsOn, wxIcon, dayLabel, dailyItems, whenLabel, dayTitle };
 })();

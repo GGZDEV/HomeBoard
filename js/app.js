@@ -65,6 +65,7 @@
     app.conn = conn;
     app.status = 'connecting';
     app.error = null;
+    app.cal = {}; app.calEvents = {}; app.forecasts = {}; // data from the previous connection
     L.init(conn, demo);
     conn.on('status', (s) => { if (app.conn === conn) { app.status = s === 'connected' && !app.index ? 'connecting' : s; queueRender(); } });
     // Subscriptions die with the socket: forget forecasts so they are re-requested.
@@ -74,6 +75,7 @@
       if (ev.new_state) app.states.set(ev.entity_id, ev.new_state);
       else app.states.delete(ev.entity_id);
       if (app.index && ev.new_state) M.addEntity(app.index, ev.entity_id);
+      if (M.domainOf(ev.entity_id) === 'calendar') app.calStamp = (app.calStamp || 0) + 1; // re-read events
       queueRender();
     });
     render();
@@ -371,7 +373,9 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
 </div>` : '';
     const ctx = {
       states: app.states, index: app.index, global: !room, roomName: room ? room.name : null,
-      targetTemp, roomSummaries, roomOrder, forecast: (st) => forecastFor(st, 'main')
+      targetTemp, roomSummaries, roomOrder, forecast: (st) => forecastFor(st, 'main'),
+      calendar: calendarFor,
+      rememberEvents: (id, events) => { app.calEvents = app.calEvents || {}; app.calEvents[id] = events; }
     };
     const body = mods.map((m) => moduleView(m, ctx, e)).join('') +
       (app.editing ? `<button class="mod add-tile" style="grid-column: span 1; grid-row: span 2" data-act="add-open" data-key="add-tile">${icon(IC.plus, 26, 2)}<span>Ajouter un module</span></button>` : '');
@@ -416,6 +420,35 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     return `<div class="empty card"><p>${esc(title)}</p>${hint ? `<p class="muted small">${esc(hint)}</p>` : ''}</div>`;
   }
 
+  // Calendar events for a set of calendars over `days` days, cached and refreshed every 5 min
+  // or as soon as a calendar entity changes in HA (app.calStamp).
+  function calendarFor(list, days) {
+    app.cal = app.cal || {};
+    const key = list.map((s) => s.entity_id).join(',') + '|' + days;
+    const slot = app.cal[key] || (app.cal[key] = { raw: null, at: 0, loading: false, error: null });
+    const stale = Date.now() - slot.at > 5 * 60000 || slot.stamp !== (app.calStamp || 0);
+    const conn = app.conn;
+    if (stale && !slot.loading && conn && conn.fetchCalendarEvents) {
+      slot.loading = true;
+      const start = new Date(); start.setHours(0, 0, 0, 0);
+      const end = new Date(start.getTime() + days * 86400000);
+      Promise.all(list.map((st) => conn.fetchCalendarEvents(st.entity_id, start, end)
+        .then((items) => [st.entity_id, items, null], (e) => [st.entity_id, [], e])))
+        .then((res) => {
+          if (app.conn !== conn) return;
+          slot.raw = {};
+          res.forEach(([id, items]) => { slot.raw[id] = items; });
+          const failed = res.filter((r) => r[2]);
+          slot.error = failed.length === res.length && failed.length ? 'Impossible de lire les calendriers (' + failed[0][2].message + ').' : null;
+          slot.at = Date.now();
+          slot.stamp = app.calStamp || 0;
+          slot.loading = false;
+          queueRender();
+        });
+    }
+    return slot;
+  }
+
   // Weather forecast, subscribed on first use; HA pushes updates. kind: 'main' (daily) or 'hourly'.
   function forecastFor(st, kind) {
     if (!app.conn || !app.conn.subscribeForecast) return null;
@@ -449,6 +482,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     const md = app.modal;
     let title, body, foot;
     if (md.kind === 'weather') return weatherModal(md.entity);
+    if (md.kind === 'event') return eventModal(md.ev);
     if (md.kind === 'add') {
       const e = env(pageRoom());
       const scope = pageRoom() ? 'room' : 'all';
@@ -549,6 +583,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
         <div class="field-row"><span class="field-label">Largeur</span>${seg('draft-w', String(d.w), [['1', '1'], ['2', '2'], ['3', '3'], ['4', '4']])}</div>
         <div class="field-row"><span class="field-label">Hauteur</span>${seg('draft-h', String(d.h), [['1', '1'], ['2', '2'], ['3', '3'], ['4', '4']])}</div>
         ${t.options ? `<div class="field-row"><span class="field-label">Affichage</span>${seg('draft-group', d.options.group || (d.scope === 'all' ? 'room' : 'sensor'), [['sensor', 'Par capteur'], ['room', 'Moyenne par pièce']])}</div>` : ''}
+        ${d.type === 'calendar' ? `<div class="field-row"><span class="field-label">Période</span>${seg('draft-days', String(d.options.days || 7), [['1', "Aujourd'hui"], ['3', '3 j'], ['7', '7 j'], ['14', '14 j'], ['30', '30 j']])}</div>` : ''}
         ${colors}
         ${tempColors}
         ${picker}`;
@@ -623,6 +658,18 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       body += '<p class="muted">Cette entité météo ne fournit pas de prévisions.</p>';
     }
     return modalFrame(M.shortName(st) + ' · Météo', body, close);
+  }
+
+  function eventModal(ev) {
+    const close = `<span class="grow"></span><button class="btn-solid" data-act="modal-close" data-key="modal-close">Fermer</button>`;
+    // Google descriptions may contain HTML: keep the text and the line breaks only.
+    const desc = String(ev.description || '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim();
+    const body = `
+      <div class="ev-cal"><i style="background: ${ev.color}"></i>${esc(ev.calName)}</div>
+      <div class="ev-when"><span class="tile-name">${esc(HD.Modules.dayTitle(ev.start))}</span><span class="muted">${esc(HD.Modules.whenLabel(ev))}</span></div>
+      ${ev.location ? `<div class="ev-line">${icon(IC.home, 16, 2)}<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ev.location)}" target="_blank" rel="noopener">${esc(ev.location)}</a></div>` : ''}
+      ${desc ? `<p class="ev-desc">${esc(desc)}</p>` : ''}`;
+    return modalFrame(ev.title, body, close);
   }
 
   function modalFrame(title, body, foot) {
@@ -869,6 +916,12 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     'draft-tempcolors'() { const o = app.modal.draft.options; o.tempColors = !HD.Modules.tempColorsOn(o); render(); },
     'mod-colors'(arg, el) { openConfig(el.closest('[data-mod]').dataset.mod, 'colors'); },
     'weather-open'(arg) { app.modal = { kind: 'weather', entity: arg }; render(); },
+    'event-open'(arg) {
+      const [mod, idx] = arg.split('|');
+      const ev = app.calEvents && app.calEvents[mod] && app.calEvents[mod][Number(idx)];
+      if (ev) { app.modal = { kind: 'event', ev }; render(); }
+    },
+    'draft-days'(arg) { app.modal.draft.options.days = Number(arg); render(); },
     'modal-save'() {
       const d = app.modal.draft;
       // Labels are shared by all modules: store them next to the layout.

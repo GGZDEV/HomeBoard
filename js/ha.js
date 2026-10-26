@@ -154,6 +154,19 @@ HD.HAConnection = class HAConnection {
     return this.send({ type: 'weather/subscribe_forecast', entity_id: entityId, forecast_type: forecastType }, { onEvent });
   }
 
+  // Calendar events between two dates (REST: /api/calendars/<entity>?start=&end=).
+  // Works when the page is served by HA (same origin); elsewhere HA's CORS settings decide.
+  fetchCalendarEvents(entityId, start, end) {
+    return this.getToken().then((token) => fetch(
+      this.baseUrl + '/api/calendars/' + encodeURIComponent(entityId) +
+        '?start=' + encodeURIComponent(start.toISOString()) + '&end=' + encodeURIComponent(end.toISOString()),
+      { headers: { Authorization: 'Bearer ' + token } }
+    )).then((r) => {
+      if (!r.ok) throw new Error('Calendrier ' + entityId + ' : erreur ' + r.status);
+      return r.json();
+    });
+  }
+
   // Per-user storage inside Home Assistant: the layout follows you on every screen.
   getUserData(key) {
     return this.send({ type: 'frontend/get_user_data', key }).then((r) => (r ? r.value : null));

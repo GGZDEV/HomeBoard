@@ -159,7 +159,9 @@ window.HD = window.HD || {};
         if (has('temperature', 'all')) row.push(mod('temperature', 2, 2, 'all', { options: { group: 'room' } }));
         if (has('weather', 'all')) row.push(mod('weather', 2, 2, 'all'));
         if (row.length) row[0].w += 4 - row.reduce((s, m) => s + m.w, 0);
-        const out = [...row, mod('rooms', 4, 2, 'all')];
+        const out = [...row];
+        if (has('calendar', 'all')) out.push(mod('calendar', 4, 2, 'all'));
+        out.push(mod('rooms', 4, 2, 'all'));
         if (has('energy', 'all')) out.push(mod('energy', 4, 2, 'all'));
         return out;
       }
