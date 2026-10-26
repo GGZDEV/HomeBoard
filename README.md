@@ -44,8 +44,10 @@ remplit exactement l'écran :
 - **Agenda** : 7 jours des calendriers HA, avec une alerte si des RER sont supprimés ou en retard dans l'heure
 - **Notes** : liste à cocher (ajout au clavier, « Effacer les cochées »), enregistrée dans le compte HA
 
-En faisant défiler, vos propres modules se placent **sous** cet écran (crayon › « + Module »).
-Réglages › Disposition › « Écran d'accueil tablette » permet de revenir à un Accueil 100 % modules.
+Chacun de ces blocs est un module comme les autres : avec le crayon, on peut le déplacer,
+l'étirer, le supprimer ou le remettre (« + Module »). Vos propres modules se placent dessous, en
+faisant défiler. « Revenir à l'écran d'accueil d'origine » remet la disposition du design.
+Réglages › Disposition › « Écran d'accueil tablette » permet de revenir à l'ancien Accueil automatique.
 
 ## Pages et modules
 

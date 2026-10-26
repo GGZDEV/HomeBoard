@@ -69,6 +69,7 @@ window.HD = window.HD || {};
       for (const [key, page] of Object.entries(d.pages)) {
         if (!page || !Array.isArray(page.modules)) continue;
         out.pages[key] = {
+          ...(page.homeBlocks ? { homeBlocks: true } : {}),
           modules: page.modules.filter((m) => m && T[m.type]).map((m) => ({
             id: typeof m.id === 'string' ? m.id : uid(),
             type: m.type,
@@ -80,7 +81,20 @@ window.HD = window.HD || {};
           }))
         };
       }
+      // The home screen used to be fixed above the user's modules: its blocks are now modules,
+      // placed once in front of the ones already saved (after that, the user's choices stay).
+      const more = out.pages['home-more'];
+      if (more && !more.homeBlocks) {
+        more.modules = this.homeBlocks().map((m, i) => ({ ...m, id: 'h-' + m.type + '-' + i })).concat(more.modules);
+        more.homeBlocks = true;
+      }
       return out;
+    },
+
+    // Home screen of the tablet design on the 4-column grid: weather | rooms + shortcuts | agenda + notes.
+    homeBlocks() {
+      const mod = (type, w, h) => ({ ...this.newModule(type, 'all'), w, h });
+      return [mod('home-weather', 1, 4), mod('home-rooms', 2, 3), mod('home-agenda', 1, 2), mod('home-scenes', 2, 1), mod('home-notes', 1, 2)];
     },
 
     exportJson() { return JSON.stringify(this.data, null, 2); },
@@ -100,7 +114,7 @@ window.HD = window.HD || {};
 
     // Called before the first edit of a page: freeze the generated layout so it can be changed.
     materialize(key, env) {
-      if (!this.data.pages[key]) this.data.pages[key] = { modules: this.defaults(key, env) };
+      if (!this.data.pages[key]) this.data.pages[key] = { modules: this.defaults(key, env), ...(key === 'home-more' ? { homeBlocks: true } : {}) };
       return this.data.pages[key].modules;
     },
 
@@ -158,6 +172,7 @@ window.HD = window.HD || {};
         if (!center.length) out.forEach((m) => { m.w = 2; });
         return out;
       }
+      if (key === 'home-more') return this.homeBlocks();
       if (key === 'home') {
         // Row 1: temperatures + weather (wide enough for the week's forecast); then rooms, then energy.
         const row = [];

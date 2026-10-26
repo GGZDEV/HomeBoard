@@ -275,9 +275,7 @@
     if (window.matchMedia && window.matchMedia(STACKED).matches) { mods.style.removeProperty('--row'); return; }
     const cs = getComputedStyle(mods);
     const gap = parseFloat(cs.rowGap) || 16;
-    // Home: modules below the home screen get the same scale (a height-4 module = one screen).
-    const hero = $app.querySelector('.hero');
-    const inner = hero ? hero.clientHeight : mods.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
+    const inner = mods.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
     mods.style.setProperty('--row', Math.max(72, Math.floor((inner - 3 * gap) / 4)) + 'px');
   }
   window.addEventListener('resize', () => { fitRows(); updateFades(); });
@@ -327,14 +325,13 @@
     const status = app.status === 'reconnecting' ? '<div class="banner" role="status">Connexion perdue, reconnexion…</div>' : '';
     // Rail flush to the left; Réglages pushed to the bottom.
     const btn = (t) => `<button class="rail-btn${t.id === app.tab ? ' is-on' : ''}" aria-label="${t.label}" title="${t.label}" ${t.id === app.tab ? 'aria-current="page"' : ''} data-act="tab" data-arg="${t.id}" data-key="tab:${t.id}">${icon(t.icon, 22)}</button>`;
-    const home = app.tab === 'home' && heroOn();
     return `
 <nav class="rail" aria-label="Navigation principale">
   ${TABS.filter((t) => t.id !== 'settings').map(btn).join('')}
   <span class="rail-spacer"></span>
   ${btn(TABS.find((t) => t.id === 'settings'))}
 </nav>
-<main class="panel${home ? ' is-home' : ''}${app.editing ? ' is-editing' : ''}"${home ? ' data-scroll="home-page"' : ''}>${status}${content}</main>
+<main class="panel${app.editing ? ' is-editing' : ''}">${status}${content}</main>
 ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
   }
 
@@ -411,13 +408,16 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
   const hhmm = (d) => d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
   const WARN_PATH = 'M12 3 2 20h20z M12 10v4 M12 17v.5';
 
-  function heroView() {
-    return `<div class="hero">
-      ${heroWeather()}
-      <div class="hero-col">${heroRooms()}${heroScenes()}</div>
-      <div class="hero-col">${heroAgenda()}${heroNotes()}</div>
-    </div>`;
-  }
+  // Each block of the home screen is a module: it can be moved, stretched, removed and added
+  // back like any other. The default home layout (layout.js) rebuilds the design on the 4×4 grid.
+  const homeType = (name, desc, ic, w, h, render) => ({ name, desc, icon: ic, w, h, noEntities: true, bare: true, home: true, render });
+  Object.assign(T, {
+    'home-weather': homeType('Météo (accueil)', 'Météo actuelle, 5 prochaines heures, 4 jours, lever et coucher du soleil.', IC.cloud, 1, 4, () => heroWeather()),
+    'home-rooms': homeType('Pièces et lumières', 'Chaque pièce avec sa température et ses lampes à allumer d\'un toucher.', IC.home, 2, 3, () => heroRooms()),
+    'home-scenes': homeType('Raccourcis', '« Tout éteindre » et vos trois premières scènes.', IC.spark, 2, 1, () => heroScenes()),
+    'home-agenda': homeType('Agenda (accueil)', 'Les 7 prochains jours de vos calendriers, avec les alertes train.', IC.calendar, 1, 2, () => heroAgenda()),
+    'home-notes': homeType('Liste de notes', 'Une liste à cocher partagée (courses, rappels…).', IC.note, 1, 2, () => heroNotes())
+  });
 
   function heroWeather() {
     const W = HD.Modules;
@@ -634,14 +634,10 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     };
     const body = mods.map((m) => moduleView(m, ctx, e)).join('') +
       (app.editing ? `<button class="mod add-tile" style="grid-column: span 1; grid-row: span 2" data-act="add-open" data-key="add-tile">${icon(IC.plus, 26, 2)}<span>Ajouter un module</span></button>` : '');
-    const hint = app.editing ? `<p class="edit-hint muted small">${touchFirst() ? 'Maintenez' : 'Attrapez'} un module puis glissez-le sur un autre pour les échanger · étirez son bord droit, son bord bas ou son coin pour le redimensionner · ${icon(IC.palette, 14)} couleurs · ${icon(IC.gear, 14)} appareils, noms et titre${L.isCustom(key) && key !== 'home-more' ? ' · <button class="link-btn" data-act="page-reset">Revenir à la disposition automatique</button>' : ''}</p>` : '';
-    if (key === 'home-more') {
-      // Home: the design's first screen, then the user's own modules further down (scroll).
-      const below = mods.length || app.editing
-        ? `${app.editing ? `<h2 class="more-title">Sous l'écran d'accueil</h2>${hint}` : ''}<div class="mods mods-flow">${body}</div>` : '';
-      return header(app.config.location_name || 'Maison', nowLabel(), true) + heroView() + below;
-    }
-    return header(title, pageSummary(key, room, mods), true) + tabs + hint +
+    const hint = app.editing ? `<p class="edit-hint muted small">${touchFirst() ? 'Maintenez' : 'Attrapez'} un module puis glissez-le sur un autre pour les échanger · étirez son bord droit, son bord bas ou son coin pour le redimensionner · ${icon(IC.palette, 14)} couleurs · ${icon(IC.gear, 14)} appareils, noms et titre${L.isCustom(key) ? ` · <button class="link-btn" data-act="page-reset">${key === 'home-more' ? 'Revenir à l\'écran d\'accueil d\'origine' : 'Revenir à la disposition automatique'}</button>` : ''}</p>` : '';
+    // Home: the design's blocks fill the first screen (4 rows), the user's own modules follow below.
+    const head = key === 'home-more' ? header(app.config.location_name || 'Maison', nowLabel(), true) : header(title, pageSummary(key, room, mods), true);
+    return head + tabs + hint +
       (mods.length || app.editing
         ? `<div class="mods" data-scroll="page:${esc(key)}">${body}</div>`
         : emptyState('Cette page est vide.', 'Touchez le crayon pour ajouter des modules.'));
@@ -661,7 +657,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       // A module set to "Toute la maison" on a room page behaves like a house-wide one.
       inner = t.render(m, list, m.scope === 'all' && !ctx.global ? { ...ctx, global: true } : ctx);
     }
-    const bare = t.bare && !m.title && list.length;
+    const bare = t.bare && !m.title && (list.length || t.noEntities);
     // Edit mode: the whole card is draggable (drop it on another one to swap them), its right edge,
     // bottom edge and corner stretch it on the 4-column grid. Arrow keys work on the grip and handles.
     const tools = app.editing ? `
@@ -1417,7 +1413,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     try { handle.setPointerCapture(e.pointerId); } catch (err) { /* old browsers */ }
     app.dragging = true;
     host.classList.add('is-resizing');
-    document.body.classList.add('is-gesture', 'rz-' + gesture.dir);
+    document.body.classList.add('is-gesture', 'gesture-' + gesture.dir);
     moveResize(e);
   }
 
@@ -1489,7 +1485,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     gesture = null;
     app.dragging = false;
     app.renderAfterDrag = false;
-    document.body.classList.remove('is-gesture', 'rz-e', 'rz-s', 'rz-se');
+    document.body.classList.remove('is-gesture', 'gesture-e', 'gesture-s', 'gesture-se');
     if (!g) return;
     swallowClick = true;
     setTimeout(() => { swallowClick = false; }, 0);
