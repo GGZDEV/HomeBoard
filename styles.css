@@ -141,18 +141,53 @@ h2 { font-size: 17px; font-weight: 600; }
 .mod-empty { flex: 1; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 10px; }
 
 /* edit mode */
-.is-editing .mod { outline: 2px dashed rgba(255, 255, 255, 0.35); outline-offset: -2px; cursor: grab; }
+.is-editing .mod {
+  outline: 2px dashed rgba(255, 255, 255, 0.35); outline-offset: -2px; cursor: grab;
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+  transition: outline-color 0.15s, box-shadow 0.15s, opacity 0.15s;
+}
+.is-editing .mod:hover { outline-color: rgba(255, 255, 255, 0.6); }
 .is-editing .mod.bare { background: rgba(255, 255, 255, 0.04); border-radius: 22px; }
-.is-editing .mod-body { opacity: 0.55; pointer-events: none; }
-.mod.is-dragging { opacity: 0.35; }
+.is-editing .mod-body { opacity: 0.55; pointer-events: none; overflow: hidden; }
+/* Card being moved: follows the pointer, lets elementFromPoint see the card underneath. */
+.mod.is-moving { z-index: 20; pointer-events: none; cursor: grabbing; opacity: 0.9; outline: 2px solid var(--accent); box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45); }
+.mod.is-drop-target { outline: 3px solid var(--accent) !important; box-shadow: 0 0 0 6px rgba(245, 197, 66, 0.18); }
+.mod.is-drop-target .mod-body { opacity: 0.3; }
+.mod.is-resizing { z-index: 5; outline: 2px solid var(--accent); }
+.is-gesture, .is-gesture * { cursor: grabbing !important; user-select: none !important; -webkit-user-select: none !important; }
+.is-gesture.rz-e, .is-gesture.rz-e * { cursor: ew-resize !important; }
+.is-gesture.rz-s, .is-gesture.rz-s * { cursor: ns-resize !important; }
+.is-gesture.rz-se, .is-gesture.rz-se * { cursor: nwse-resize !important; }
+.rz-ghost { position: fixed; z-index: 30; pointer-events: none; border: 2px dashed var(--accent); border-radius: 22px; background: rgba(245, 197, 66, 0.08); }
+
 .mod-tools {
-  position: absolute; left: 10px; right: 10px; top: 10px; z-index: 2;
+  position: absolute; left: 10px; right: 10px; top: 10px; z-index: 3;
   display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;
 }
-.mod-size { display: inline-flex; align-items: center; gap: 4px; height: 30px; padding: 0 10px; border-radius: 15px; background: rgba(0, 0, 0, 0.45); font-size: 12px; font-weight: 600; }
+.mod-grip {
+  display: inline-flex; align-items: center; gap: 4px; height: 32px; padding: 0 12px 0 8px; border: none; border-radius: 16px;
+  background: rgba(0, 0, 0, 0.5); color: #fff; font: 600 12px/1 inherit; font-variant-numeric: tabular-nums;
+  cursor: grab; touch-action: none;
+}
+.mod-grip:hover { background: rgba(0, 0, 0, 0.65); }
+.mod.is-resizing .mod-grip { background: var(--accent); color: var(--ink); }
 .mod-tools-btns { display: inline-flex; gap: 4px; padding: 3px; border-radius: 18px; background: rgba(28, 28, 30, 0.75); }
-.mod-tools-btns button { width: 30px; height: 30px; border: none; border-radius: 15px; background: transparent; display: flex; align-items: center; justify-content: center; color: #fff; }
+.mod-tools-btns button { width: 30px; height: 30px; border: none; border-radius: 15px; background: transparent; display: flex; align-items: center; justify-content: center; color: #fff; cursor: pointer; }
 .mod-tools-btns button:hover { background: rgba(255, 255, 255, 0.18); }
+
+/* Resize handles: a pill on the right edge, one on the bottom edge, a bracket in the corner.
+   Generous invisible hit areas so a finger catches them easily. */
+.rz { position: absolute; z-index: 4; border: none; padding: 0; background: transparent; touch-action: none; }
+.rz::after { content: ""; position: absolute; border-radius: 3px; background: rgba(255, 255, 255, 0.75); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4); transition: background 0.15s, transform 0.15s; }
+.rz-e { top: 50%; right: 0; width: 26px; height: 72px; margin-top: -36px; cursor: ew-resize; }
+.rz-e::after { left: 12px; top: 16px; width: 6px; height: 40px; }
+.rz-s { left: 50%; bottom: 0; width: 72px; height: 26px; margin-left: -36px; cursor: ns-resize; }
+.rz-s::after { top: 12px; left: 16px; height: 6px; width: 40px; }
+.rz-se { right: 0; bottom: 0; width: 38px; height: 38px; cursor: nwse-resize; }
+.rz-se::after { right: 7px; bottom: 7px; width: 18px; height: 18px; border-radius: 0 0 10px 0; background: transparent; box-shadow: none; border-right: 5px solid rgba(255, 255, 255, 0.75); border-bottom: 5px solid rgba(255, 255, 255, 0.75); }
+.rz:hover::after, .rz:focus-visible::after, .mod.is-resizing .rz::after { background: var(--accent); }
+.rz-se:hover::after, .rz-se:focus-visible::after, .mod.is-resizing .rz-se::after { background: transparent; border-color: var(--accent); }
+.rz:focus-visible { outline: none; }
 .add-tile {
   border: 2px dashed rgba(255, 255, 255, 0.35); background: rgba(255, 255, 255, 0.04); color: #fff;
   align-items: center; justify-content: center; gap: 10px; font-size: 15px; font-weight: 600;
@@ -613,6 +648,7 @@ button.tile.is-on:hover { filter: brightness(1.06); }
   .pill { flex: none; }
   .mods { grid-template-columns: minmax(0, 1fr); grid-auto-rows: auto; overflow: visible; flex: none; }
   .mod, .mod.w3, .mod.w4 { grid-column: span 1 !important; grid-row: auto !important; min-height: calc(var(--h) * 88px); }
+  .rz-e { display: none; } /* one column: only the height changes */
   .scene-list, .devices, .temp-list, .value-grid, .energy-list, .room-cards, .auto-list { overflow: visible; flex: none; }
   .scene-btn { flex: none; }
   .devices { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 112px; }

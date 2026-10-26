@@ -55,8 +55,12 @@ automatiquement à partir des appareils trouvés (les nouveaux appareils apparai
 
 **Personnaliser** : touchez le crayon en haut à droite de la page.
 - `+ Module` / « Ajouter un module » : choisir un type (le nombre d'appareils compatibles trouvés est indiqué)
-- glisser-déposer un module, ou ‹ › pour le déplacer
-- ↔ / ↕ : largeur et hauteur (1 à 4)
+- **déplacer / échanger** : attrapez un module (au doigt : maintenez-le ~0,3 s, ou prenez la
+  poignée ⠿ en haut à gauche) et lâchez-le sur un autre module : les deux échangent leur place
+- **redimensionner** : étirez le bord droit (largeur), le bord bas (hauteur) ou le coin
+  (les deux) ; la taille s'aligne sur la grille de 4 × 4 en direct et les autres modules se
+  replacent autour
+- au clavier : flèches sur la poignée (déplacer) ou sur une poignée de bord (taille)
 - ⚙ : titre, portée (*cette pièce* / *toute la maison*), taille, choix des appareils
   (automatique, ou liste à cocher avec recherche)
 - ⚙ › **Couleur** : couleur d'accent propre au module (ou celle par défaut des Réglages)

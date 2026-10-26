@@ -27,7 +27,7 @@
     conn: null, index: null, states: new Map(), config: {},
     status: 'idle', error: null, toast: null,
     tab, room: store.get('hd.room', null),
-    editing: false, modal: null, dragId: null,
+    editing: false, modal: null,
     pendingTemp: {}, dragging: false, renderQueued: false
   };
   const $app = document.getElementById('app');
@@ -268,6 +268,7 @@
   // Size grid rows from the space really available, so 4 rows = exactly the visible height:
   // a height-4 module is never cut off, whatever the screen. Stacked (phone) layout: natural heights.
   const STACKED = '(max-width: 860px), (max-height: 620px)';
+  function touchFirst() { return !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches); }
   function fitRows() {
     const mods = $app.querySelector('.mods');
     if (!mods) return;
@@ -633,7 +634,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     };
     const body = mods.map((m) => moduleView(m, ctx, e)).join('') +
       (app.editing ? `<button class="mod add-tile" style="grid-column: span 1; grid-row: span 2" data-act="add-open" data-key="add-tile">${icon(IC.plus, 26, 2)}<span>Ajouter un module</span></button>` : '');
-    const hint = app.editing ? `<p class="edit-hint muted small">Glissez les modules pour les réordonner · ${icon(IC.width, 14)} largeur · ${icon(IC.height, 14)} hauteur · ${icon(IC.palette, 14)} couleurs · ${icon(IC.gear, 14)} appareils, noms et titre${L.isCustom(key) && key !== 'home-more' ? ' · <button class="link-btn" data-act="page-reset">Revenir à la disposition automatique</button>' : ''}</p>` : '';
+    const hint = app.editing ? `<p class="edit-hint muted small">${touchFirst() ? 'Maintenez' : 'Attrapez'} un module puis glissez-le sur un autre pour les échanger · étirez son bord droit, son bord bas ou son coin pour le redimensionner · ${icon(IC.palette, 14)} couleurs · ${icon(IC.gear, 14)} appareils, noms et titre${L.isCustom(key) && key !== 'home-more' ? ' · <button class="link-btn" data-act="page-reset">Revenir à la disposition automatique</button>' : ''}</p>` : '';
     if (key === 'home-more') {
       // Home: the design's first screen, then the user's own modules further down (scroll).
       const below = mods.length || app.editing
@@ -661,21 +662,22 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       inner = t.render(m, list, m.scope === 'all' && !ctx.global ? { ...ctx, global: true } : ctx);
     }
     const bare = t.bare && !m.title && list.length;
+    // Edit mode: the whole card is draggable (drop it on another one to swap them), its right edge,
+    // bottom edge and corner stretch it on the 4-column grid. Arrow keys work on the grip and handles.
     const tools = app.editing ? `
       <div class="mod-tools">
-        <span class="mod-size" aria-hidden="true">${icon(IC.drag, 16, 2.4)} ${m.w}×${m.h}</span>
+        <button class="mod-grip" aria-label="Déplacer (flèches gauche / droite)" title="Glisser pour déplacer" data-grip data-key="${m.id}:grip">${icon(IC.drag, 16, 2.6)}<span data-size>${m.w}×${m.h}</span></button>
         <span class="mod-tools-btns">
-          <button aria-label="Déplacer avant" data-act="mod-move" data-arg="-1" data-key="${m.id}:mv-">${icon(IC.left, 16, 2.2)}</button>
-          <button aria-label="Déplacer après" data-act="mod-move" data-arg="1" data-key="${m.id}:mv+">${icon(IC.right, 16, 2.2)}</button>
-          <button aria-label="Changer la largeur (${m.w} sur 4)" data-act="mod-w" data-key="${m.id}:w">${icon(IC.width, 16, 2)}</button>
-          <button aria-label="Changer la hauteur (${m.h} sur 4)" data-act="mod-h" data-key="${m.id}:h">${icon(IC.height, 16, 2)}</button>
           <button aria-label="Couleurs du module" title="Couleurs" data-act="mod-colors" data-key="${m.id}:col">${icon(IC.palette, 16, 2)}</button>
           <button aria-label="Paramétrer le module" title="Paramètres" data-act="mod-config" data-key="${m.id}:cfg">${icon(IC.gear, 16, 2)}</button>
-          <button aria-label="Supprimer le module" data-act="mod-del" data-key="${m.id}:del">${icon(IC.trash, 16, 2)}</button>
+          <button aria-label="Supprimer le module" title="Supprimer" data-act="mod-del" data-key="${m.id}:del">${icon(IC.trash, 16, 2)}</button>
         </span>
-      </div>` : '';
-    return `<section class="mod ${bare ? 'bare' : 'card'} t-${m.type} w${m.w} h${m.h}${app.dragId === m.id ? ' is-dragging' : ''}" data-mod="${esc(m.id)}" aria-label="${esc(m.title || t.name)}"
-      style="grid-column: span ${m.w}; grid-row: span ${m.h}; --h: ${m.h}${/^#[0-9a-f]{6}$/i.test(m.options.accent || '') ? '; --accent: ' + m.options.accent : ''}" ${app.editing ? 'draggable="true"' : ''}>
+      </div>
+      <button class="rz rz-e" data-rz="e" data-key="${m.id}:rz-e" aria-label="Largeur : ${m.w} sur 4 (flèches gauche / droite)" title="Étirer pour changer la largeur"></button>
+      <button class="rz rz-s" data-rz="s" data-key="${m.id}:rz-s" aria-label="Hauteur : ${m.h} sur 4 (flèches haut / bas)" title="Étirer pour changer la hauteur"></button>
+      <button class="rz rz-se" data-rz="se" data-key="${m.id}:rz-se" aria-label="Taille : ${m.w} × ${m.h} (flèches)" title="Étirer pour redimensionner"></button>` : '';
+    return `<section class="mod ${bare ? 'bare' : 'card'} t-${m.type} w${m.w} h${m.h}" data-mod="${esc(m.id)}" aria-label="${esc(m.title || t.name)}"
+      style="grid-column: span ${m.w}; grid-row: span ${m.h}; --h: ${m.h}${/^#[0-9a-f]{6}$/i.test(m.options.accent || '') ? '; --accent: ' + m.options.accent : ''}">
       <div class="mod-body"${app.editing ? ' inert' : ''}>${inner}</div>${tools}</section>`;
   }
 
@@ -1154,16 +1156,6 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       app.modal = null;
       if (!n) openConfig(m.id); else render();
     },
-    'mod-move'(arg, el) {
-      const id = el.closest('[data-mod]').dataset.mod;
-      editPage((mods) => {
-        const i = moduleIndex(mods, id), j = i + Number(arg);
-        if (i < 0 || j < 0 || j >= mods.length) return;
-        [mods[i], mods[j]] = [mods[j], mods[i]];
-      });
-    },
-    'mod-w'(arg, el) { const id = el.closest('[data-mod]').dataset.mod; editPage((mods) => { const m = mods[moduleIndex(mods, id)]; if (m) m.w = m.w % 4 + 1; }); },
-    'mod-h'(arg, el) { const id = el.closest('[data-mod]').dataset.mod; editPage((mods) => { const m = mods[moduleIndex(mods, id)]; if (m) m.h = m.h % 4 + 1; }); },
     'mod-config'(arg, el) { openConfig(el.closest('[data-mod]').dataset.mod); },
     'mod-del'(arg, el) {
       const id = arg || el.closest('[data-mod]').dataset.mod;
@@ -1378,38 +1370,209 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     }
   });
 
-  // Drag & drop to reorder modules in edit mode.
-  $app.addEventListener('dragstart', (e) => {
-    const host = e.target.closest && e.target.closest('[data-mod]');
-    if (!app.editing || !host) return;
-    app.dragId = host.dataset.mod;
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', app.dragId);
-    host.classList.add('is-dragging');
-  });
-  $app.addEventListener('dragover', (e) => {
-    if (!app.dragId) return;
-    const host = e.target.closest('[data-mod]');
-    if (host && host.dataset.mod !== app.dragId) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }
-  });
-  $app.addEventListener('drop', (e) => {
-    const host = e.target.closest('[data-mod]');
-    const from = app.dragId;
-    app.dragId = null;
-    if (!host || !from || host.dataset.mod === from) { render(); return; }
+  // ---------- edit mode: move and resize with mouse or finger ----------
+  // Move: drag a card (mouse: right away; finger: hold ~0.3 s first so the page still scrolls)
+  // and drop it on another card to swap them. Resize: stretch the right edge, bottom edge or
+  // corner; the size snaps to the grid live and the other cards reflow around it.
+  let gesture = null;   // current move / resize
+  let pending = null;   // pointer down on a card, not yet a move
+  let swallowClick = false;
+
+  function gridMetrics(grid) {
+    const cs = getComputedStyle(grid);
+    const colGap = parseFloat(cs.columnGap) || 0;
+    const rowGap = parseFloat(cs.rowGap) || 0;
+    const cols = cs.gridTemplateColumns.split(' ').filter(Boolean).length || 1;
+    const inner = grid.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
+    const stacked = cols === 1;
+    return {
+      stacked, colGap, rowGap: stacked ? 0 : rowGap,
+      col: (inner - (cols - 1) * colGap) / cols,
+      row: stacked ? 88 : parseFloat(cs.gridAutoRows) || 104 // stacked: min-height = h × 88 px
+    };
+  }
+  const clampSize = (v) => Math.max(1, Math.min(4, v));
+  function pageModule(id) { return L.modules(pageKey(), env(pageRoom())).find((x) => x.id === id); }
+
+  // Apply a size to the card without re-rendering (live preview while stretching).
+  function previewSize(host, w, h) {
+    host.style.gridColumn = 'span ' + w;
+    host.style.gridRow = 'span ' + h;
+    host.style.setProperty('--h', h);
+    host.className = host.className.replace(/\bw\d\b/, 'w' + w).replace(/\bh\d\b/, 'h' + h);
+    const label = host.querySelector('[data-size]');
+    if (label) label.textContent = w + '×' + h;
+  }
+
+  function startResize(e, handle) {
+    const host = handle.closest('[data-mod]');
+    const m = host && pageModule(host.dataset.mod);
+    if (!m) return;
     e.preventDefault();
-    const to = host.dataset.mod;
+    const g = gridMetrics(host.parentElement);
+    const ghost = document.createElement('div');
+    ghost.className = 'rz-ghost';
+    document.body.appendChild(ghost);
+    gesture = { kind: 'resize', dir: handle.dataset.rz, host, id: m.id, w0: m.w, h0: m.h, w: m.w, h: m.h, x0: e.clientX, y0: e.clientY, g, ghost, pid: e.pointerId };
+    try { handle.setPointerCapture(e.pointerId); } catch (err) { /* old browsers */ }
+    app.dragging = true;
+    host.classList.add('is-resizing');
+    document.body.classList.add('is-gesture', 'rz-' + gesture.dir);
+    moveResize(e);
+  }
+
+  function moveResize(e) {
+    const r = gesture, g = r.g;
+    const dx = e.clientX - r.x0, dy = e.clientY - r.y0;
+    // Raw size under the pointer, from the module's grid size (not its box, which may grow with content).
+    const baseW = r.w0 * (g.col + g.colGap) - g.colGap;
+    const baseH = r.h0 * (g.row + g.rowGap) - g.rowGap;
+    const rawW = r.dir !== 's' && !g.stacked ? Math.max(g.col * 0.6, baseW + dx) : baseW;
+    const rawH = r.dir !== 'e' ? Math.max(g.row * 0.6, baseH + dy) : baseH;
+    const w = g.stacked ? r.w0 : clampSize(Math.round((rawW + g.colGap) / (g.col + g.colGap)));
+    const h = clampSize(Math.round((rawH + g.rowGap) / (g.row + g.rowGap)));
+    if (w !== r.w || h !== r.h) { r.w = w; r.h = h; previewSize(r.host, w, h); }
+    // The ghost frame follows the pointer exactly; the card itself snaps to the grid.
+    const rect = r.host.getBoundingClientRect();
+    Object.assign(r.ghost.style, { left: rect.left + 'px', top: rect.top + 'px', width: (g.stacked ? rect.width : rawW) + 'px', height: rawH + 'px' });
+  }
+
+  function scroller(host) {
+    const s = host.closest('[data-scroll]');
+    return s && s.scrollHeight > s.clientHeight + 2 ? s : null;
+  }
+
+  function startMove(p) {
+    const host = p.host;
+    pending = null;
+    if (!host.isConnected) return; // redrawn meanwhile
+    const sc = scroller(host);
+    gesture = { kind: 'move', host, id: host.dataset.mod, x0: p.x0, y0: p.y0, x: p.x, y: p.y, sc, st0: sc ? sc.scrollTop : window.scrollY, target: null, pid: p.pid };
+    app.dragging = true;
+    host.classList.add('is-moving');
+    document.body.classList.add('is-gesture');
+    if (p.touch && navigator.vibrate) { try { navigator.vibrate(12); } catch (err) { /* not allowed */ } }
+    // Scroll the page / list while the card is held near its top or bottom edge.
+    gesture.timer = setInterval(autoScroll, 16);
+    updateMove();
+  }
+
+  function autoScroll() {
+    const g = gesture;
+    if (!g || g.kind !== 'move') return;
+    const box = g.sc ? g.sc.getBoundingClientRect() : { top: 0, bottom: window.innerHeight };
+    const edge = 60;
+    let step = 0;
+    if (g.y < box.top + edge) step = -Math.ceil((box.top + edge - g.y) / 5);
+    else if (g.y > box.bottom - edge) step = Math.ceil((g.y - box.bottom + edge) / 5);
+    if (!step) return;
+    if (g.sc) g.sc.scrollTop += step; else window.scrollBy(0, step);
+    updateMove();
+  }
+
+  function updateMove() {
+    const g = gesture;
+    const scrolled = (g.sc ? g.sc.scrollTop : window.scrollY) - g.st0;
+    g.host.style.transform = `translate(${g.x - g.x0}px, ${g.y - g.y0 + scrolled}px)`;
+    const under = document.elementFromPoint(g.x, g.y);
+    let t = under && under.closest('[data-mod]');
+    if (t && (t === g.host || t.parentElement !== g.host.parentElement)) t = null;
+    if (t !== g.target) {
+      if (g.target) g.target.classList.remove('is-drop-target');
+      if (t) t.classList.add('is-drop-target');
+      g.target = t;
+    }
+  }
+
+  function endGesture(commit) {
+    const g = gesture;
+    gesture = null;
+    app.dragging = false;
+    app.renderAfterDrag = false;
+    document.body.classList.remove('is-gesture', 'rz-e', 'rz-s', 'rz-se');
+    if (!g) return;
+    swallowClick = true;
+    setTimeout(() => { swallowClick = false; }, 0);
+    if (g.timer) clearInterval(g.timer);
+    if (g.ghost) g.ghost.remove();
+    if (g.kind === 'resize' && commit && (g.w !== g.w0 || g.h !== g.h0)) {
+      editPage((mods) => { const m = mods[moduleIndex(mods, g.id)]; if (m) { m.w = g.w; m.h = g.h; } });
+    } else if (g.kind === 'move' && commit && g.target) {
+      const to = g.target.dataset.mod;
+      editPage((mods) => {
+        const i = moduleIndex(mods, g.id), j = moduleIndex(mods, to);
+        if (i >= 0 && j >= 0) [mods[i], mods[j]] = [mods[j], mods[i]];
+      });
+    } else {
+      render();
+    }
+  }
+
+  $app.addEventListener('pointerdown', (e) => {
+    if (!app.editing || gesture || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    const handle = e.target.closest('[data-rz]');
+    if (handle) { startResize(e, handle); return; }
+    const host = e.target.closest('[data-mod]');
+    if (!host) return;
+    const grip = e.target.closest('[data-grip]');
+    if (!grip && e.target.closest('button, a, input, textarea, select')) return;
+    const touch = e.pointerType !== 'mouse';
+    pending = { host, pid: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, touch };
+    // The grip moves right away; elsewhere a finger has to hold still first (otherwise it scrolls).
+    if (grip) { e.preventDefault(); startMove(pending); }
+    else if (touch) pending.timer = setTimeout(() => { if (pending) startMove(pending); }, 300);
+  });
+
+  document.addEventListener('pointermove', (e) => {
+    if (gesture && e.pointerId === gesture.pid) {
+      if (gesture.kind === 'resize') moveResize(e);
+      else { gesture.x = e.clientX; gesture.y = e.clientY; updateMove(); }
+      return;
+    }
+    if (!pending || e.pointerId !== pending.pid) return;
+    pending.x = e.clientX; pending.y = e.clientY;
+    const dist = Math.hypot(e.clientX - pending.x0, e.clientY - pending.y0);
+    if (pending.touch) { if (dist > 10) { clearTimeout(pending.timer); pending = null; } } // the finger scrolls
+    else if (dist > 5) startMove(pending);
+  });
+
+  function pointerEnd(e, commit) {
+    if (pending && e.pointerId === pending.pid) { clearTimeout(pending.timer); pending = null; }
+    if (gesture && e.pointerId === gesture.pid) endGesture(commit);
+  }
+  document.addEventListener('pointerup', (e) => pointerEnd(e, true));
+  document.addEventListener('pointercancel', (e) => pointerEnd(e, false));
+  // Once a card is held, the finger drags it instead of scrolling the page.
+  document.addEventListener('touchmove', (e) => { if (gesture) e.preventDefault(); }, { passive: false });
+  // Long press on a card: no context menu.
+  $app.addEventListener('contextmenu', (e) => { if (app.editing && e.target.closest('[data-mod]')) e.preventDefault(); });
+  // A drag that ends over a button must not also click it.
+  $app.addEventListener('click', (e) => { if (swallowClick) { e.stopPropagation(); e.preventDefault(); } }, true);
+
+  // Keyboard: arrows on the grip move the card, arrows on a handle resize it.
+  $app.addEventListener('keydown', (e) => {
+    if (!app.editing || !/^Arrow/.test(e.key)) return;
+    const grip = e.target.closest('[data-grip]');
+    const handle = e.target.closest('[data-rz]');
+    if (!grip && !handle) return;
+    const id = e.target.closest('[data-mod]').dataset.mod;
+    e.preventDefault();
+    if (grip) {
+      const d = e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 1;
+      editPage((mods) => {
+        const i = moduleIndex(mods, id), j = i + d;
+        if (i >= 0 && j >= 0 && j < mods.length) [mods[i], mods[j]] = [mods[j], mods[i]];
+      });
+      return;
+    }
+    const dir = handle.dataset.rz;
     editPage((mods) => {
-      const i = moduleIndex(mods, from);
-      if (i < 0) return;
-      const [m] = mods.splice(i, 1);
-      const j = moduleIndex(mods, to);
-      const rect = host.getBoundingClientRect();
-      const after = e.clientX > rect.left + rect.width / 2;
-      mods.splice(after ? j + 1 : j, 0, m);
+      const m = mods[moduleIndex(mods, id)];
+      if (!m) return;
+      if (dir !== 's' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) m.w = clampSize(m.w + (e.key === 'ArrowRight' ? 1 : -1));
+      if (dir !== 'e' && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) m.h = clampSize(m.h + (e.key === 'ArrowDown' ? 1 : -1));
     });
   });
-  $app.addEventListener('dragend', () => { if (app.dragId) { app.dragId = null; render(); } });
 
   // Leaving a note: save right away and catch up on updates skipped while typing.
   $app.addEventListener('focusout', (e) => {
@@ -1419,6 +1582,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
   });
 
   document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && gesture) { endGesture(false); return; }
     if (e.key === 'Escape' && app.modal) { app.modal = null; render(); }
   });
 
