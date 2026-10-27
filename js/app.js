@@ -280,6 +280,14 @@
   // Size grid rows from the space really available, so 4 rows = exactly the visible height:
   // a height-4 module is never cut off, whatever the screen. Stacked (phone) layout: natural heights.
   const STACKED = '(max-width: 860px), (max-height: 620px)';
+  const stacked = () => !!(window.matchMedia && window.matchMedia(STACKED).matches);
+  // Height of one grid row: the value fitRows() set, else an estimate from the window (first render).
+  function rowPx() {
+    const mods = $app.querySelector('.mods');
+    const v = mods ? parseFloat(mods.style.getPropertyValue('--row')) : NaN;
+    if (isFinite(v) && v > 0) return v;
+    return Math.max(72, (innerHeight - 44 - 56 - 18 - 3 * 16) / 4);
+  }
   function touchFirst() { return !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches); }
   function fitRows() {
     const mods = $app.querySelector('.mods');
@@ -291,7 +299,13 @@
     // Exact (fractional) size: the 4th row ends right at the bottom and the 5th starts below the fold.
     mods.style.setProperty('--row', Math.max(72, (inner - 3 * gap) / 4).toFixed(2) + 'px');
   }
-  window.addEventListener('resize', () => { fitRows(); updateFades(); });
+  // Some modules pick their layout from the space they get: redraw when the screen size changes.
+  let lastSize = innerWidth + 'x' + innerHeight;
+  window.addEventListener('resize', () => {
+    fitRows(); updateFades();
+    const size = innerWidth + 'x' + innerHeight;
+    if (size !== lastSize) { lastSize = size; queueRender(); }
+  });
 
   function loginView() {
     const saved = store.get('hd.conn', {}) || {};
@@ -894,12 +908,17 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
         (h >= 3 ? allOff('is-full') : '');
     } else {
       const hottest = rooms.filter((r) => r.t != null).sort((a, b) => b.t - a.t)[0];
+      // Big tiles need ~110 px of height each; when the rows can't give that, one line per room instead.
+      const cols = w === 2 ? 2 : 3;
+      const rowsNeeded = Math.ceil((rooms.length + 1) / cols);
+      const gridH = h * rowPx() + (h - 1) * 16 - 40 - 20 - 16 - (h >= 3 ? 80 : 0);
+      const compact = !stacked() && (gridH - (rowsNeeded - 1) * 12) / rowsNeeded < 110;
       body = headHtml([avgTxt, nOn].filter(Boolean).join(' · ')) +
         (h >= 3 ? `<div class="rooms-sum">
           <span><span class="muted small">Moyenne</span><b>${ti != null ? esc(M.fmtNum(ti)) + '°' : '—'}</b></span>
           <span><span class="muted small">Lumières</span><b>${esc(plural(n, 'allumée', 'allumées'))}</b></span>
           <span><span class="muted small">Plus chaude</span><b class="ell${hottest && hottest.hot ? ' is-hot' : ''}">${hottest ? esc(hottest.room.name + ' · ' + hottest.temp) : '—'}</b></span></div>` : '') +
-        `<div class="rooms-grid" data-scroll="hero-rooms:${id}" style="grid-template-columns: repeat(${w === 2 ? 2 : 3}, minmax(0, 1fr)); --rt-temp: ${h >= 3 ? 32 : 24}px">${rooms.map((r) => `<div class="rt${r.on ? ' is-on' : ''}">
+        `<div class="rooms-grid${compact ? ' is-rows' : ''}" data-scroll="hero-rooms:${id}" style="grid-template-columns: repeat(${cols}, minmax(0, 1fr)); --rt-temp: ${h >= 3 ? 32 : 24}px">${rooms.map((r) => `<div class="rt${r.on ? ' is-on' : ''}">
           <div class="rt-top">${roomName(r)}<span class="muted small ell">${esc(r.sub)}</span></button>${roomBulb(r)}</div>
           <span class="rt-bottom"><span class="${tempCls(r)}">${esc(r.temp)}</span>${r.hot ? '<span class="rt-hot">Chaud</span>' : ''}</span></div>`).join('')}
           ${allOff('rt-off')}</div>`;

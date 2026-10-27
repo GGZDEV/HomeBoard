@@ -792,8 +792,8 @@ span.h2 { font-size: 15px; font-weight: 600; }
 .wh-list { display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
 .wh-list > span { display: flex; align-items: center; justify-content: space-between; min-height: 28px; }
 .wh-list b { font-weight: 600; font-variant-numeric: tabular-nums; }
-.wh-days { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: space-evenly; font-size: 14px; }
-.wh-day { display: grid; grid-template-columns: 52px 30px minmax(0, 1fr) 30px; align-items: center; column-gap: 12px; min-height: 28px; }
+.wh-days { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: flex-start; font-size: 14px; }
+.wh-day { flex: 1 1 0; display: grid; grid-template-columns: 52px 30px minmax(0, 1fr) 30px; align-items: center; column-gap: 12px; min-height: 26px; max-height: 40px; }
 .wh-days.is-narrow .wh-day { grid-template-columns: 40px 26px minmax(0, 1fr) 26px; column-gap: 8px; }
 .wh-day > span:first-child { font-weight: 500; }
 .wh-day .wh-num { text-align: right; }
@@ -812,16 +812,16 @@ span.h2 { font-size: 15px; font-weight: 600; }
 
 /* Short cards (small tablets): tighter spacing so the forecast still fits. */
 /* (Not on phones: there cards take their natural height, which size containment would hide.) */
-@media (min-width: 861px) and (min-height: 621px) { .hero-weather, .hero-rooms.roomsv-big { container-type: size; } }
-@container (max-height: 300px) {
+@media (min-width: 861px) and (min-height: 621px) { .hero-weather { container-type: size; } }
+@container (max-height: 380px) {
   .wh-center { flex-direction: row; flex-wrap: wrap; justify-content: center; column-gap: 10px; }
   .wh-center .wh-now svg { width: 36px; height: 36px; }
   .wh-center .wh-temp { font-size: 36px !important; }
   .wh-hours.is-boxed { padding: 8px; }
   .wh-hr { gap: 4px; }
   .wh-hr svg { width: 18px; height: 18px; }
-  .wh-day { min-height: 22px; }
-  .hero-weather.wxv-narrow, .hero-weather.wxv-big { gap: 10px; }
+  .wh-day { min-height: 24px; }
+  .hero-weather.wxv-narrow, .hero-weather.wxv-big { gap: 14px; }
 }
 /* ----- Pièces ----- */
 .hero-rooms { flex: 1; }
@@ -861,17 +861,19 @@ span.h2 { font-size: 15px; font-weight: 600; }
 .rc-n { font-size: 48px; line-height: 1; font-weight: 600; letter-spacing: -0.03em; color: var(--accent); font-variant-numeric: tabular-nums; }
 
 /* Short room grids (tablets): each room on one line — name, temperature, bulb — as on the 16:9 design. */
-@container (max-height: 410px) {
-  .rooms-grid { grid-auto-rows: minmax(58px, 1fr); gap: 10px; }
-  .rooms-grid .rt { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; column-gap: 10px; padding: 6px 8px 6px 14px; }
-  .rooms-grid .rt-top { display: contents; }
-  .rooms-grid .rt-open { order: 1; gap: 2px; }
-  .rooms-grid .rt-name { font-size: 15px; }
-  .rooms-grid .rt-bottom { order: 2; flex-direction: column; align-items: flex-end; gap: 2px; }
-  .rooms-grid .rt-temp { font-size: 18px; }
-  .rooms-grid .bulb { order: 3; }
-  .rooms-grid .rt-off { border-radius: 14px; }
-}
+.rooms-grid.is-rows { grid-auto-rows: minmax(58px, 1fr); gap: 10px; }
+.rooms-grid.is-rows .rt { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; column-gap: 12px; padding: 6px 8px 6px 14px; }
+.rooms-grid.is-rows .rt-top { display: contents; }
+.rooms-grid.is-rows .rt-open { order: 1; gap: 2px; }
+.rooms-grid.is-rows .rt-name { font-size: 15px; }
+.rooms-grid.is-rows .rt-bottom { order: 2; flex-direction: column; align-items: flex-end; gap: 2px; }
+.rooms-grid.is-rows .rt-temp { font-size: 18px; }
+.rooms-grid.is-rows .bulb { order: 3; }
+.rooms-grid.is-rows .rt-off { border-radius: 14px; }
+/* Big tiles: the temperature sits at the bottom and never runs past the tile. */
+.rooms-grid .rt { overflow: hidden; }
+.rooms-grid:not(.is-rows) .rt-top { flex: 1 1 auto; min-height: 0; }
+.rt-bottom { flex: none; }
 
 /* ----- Agenda ----- */
 .hero-agenda { flex: 1; }
