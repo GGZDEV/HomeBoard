@@ -814,11 +814,14 @@ span.h2 { font-size: 15px; font-weight: 600; }
 /* (Not on phones: there cards take their natural height, which size containment would hide.) */
 @media (min-width: 861px) and (min-height: 621px) { .hero-weather { container-type: size; } }
 @container (max-height: 380px) {
-  .wh-center { flex-direction: row; flex-wrap: wrap; justify-content: center; column-gap: 10px; }
-  .wh-center .wh-now svg { width: 36px; height: 36px; }
-  .wh-center .wh-temp { font-size: 36px !important; }
-  .wh-hours.is-boxed { padding: 8px; }
-  .wh-hr { gap: 4px; }
+  .wh-center { flex-direction: row; flex-wrap: nowrap; justify-content: center; column-gap: 10px; }
+  .wh-center .wh-now svg { width: 34px; height: 34px; }
+  .wh-center .wh-temp { font-size: 34px !important; }
+  .wh-center > .muted { display: none; }   /* today's min/max is already the first forecast row */
+  .wh-hours.is-boxed { padding: 6px 6px; border-radius: 14px; }
+  .wh-hr { gap: 2px; }
+  .wh-hr .muted { font-size: 11px; }
+  .wh-hr b { font-size: 14px; }
   .wh-hr svg { width: 18px; height: 18px; }
   .wh-day { min-height: 24px; }
   .hero-weather.wxv-narrow, .hero-weather.wxv-big { gap: 14px; }
