@@ -112,6 +112,8 @@ Les entités masquées, désactivées ou de catégorie *config/diagnostic* sont 
 
 - **Mises à jour** (icône ⬇ de la barre, avec une pastille rouge du nombre disponible) : tout ce que
   Home Assistant propose de mettre à jour ; touchez une ligne pour les notes de version et l'installation.
+  **Tout mettre à jour** les installe une par une (modules et HACS d'abord, puis Supervisor, Core et
+  le système en dernier), avec une sauvegarde avant Home Assistant ; gardez la page ouverte jusqu'à la fin.
 - **Serveur** : votre Proxmox, en direct. Il faut l'intégration **Proxmox VE** (HACS : *Proxmox VE*,
   puis Paramètres › Appareils et services › Ajouter › Proxmox VE, avec un utilisateur API Proxmox).
   Chaque nœud, VM, conteneur et stockage devient un appareil ; les valeurs se mettent à jour à

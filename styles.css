@@ -976,3 +976,8 @@ button.tile.is-on:hover { filter: brightness(1.06); }
 .pve-act:hover { background: var(--glass-hover); }
 .pve-act:active { transform: scale(0.9); }
 @media (max-width: 560px) { .pve-mini { display: none; } }
+
+.upd-head { display: flex; align-items: center; gap: 8px; }
+.upd-state.is-wait { color: rgba(255, 255, 255, 0.55); font-weight: 500; }
+.upd-order { list-style: decimal; margin: 4px 0 12px; padding-left: 22px; display: flex; flex-direction: column; gap: 8px; }
+.upd-order li { display: flex; justify-content: space-between; gap: 12px; }

@@ -697,6 +697,47 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     return out.join('');
   }
 
+  const pendingUpdates = () => [...app.states.values()].filter((s) => M.domainOf(s.entity_id) === 'update' && s.state === 'on' && !s.attributes.in_progress).map(HD.Modules.updateInfo);
+  // Safe order: add-ons, HACS and devices first, then Supervisor, Core, and the OS last (they restart).
+  const updRank = (u) => (/operating_system|_os_update/.test(u.id) ? 3 : /core/.test(u.id) ? 2 : /supervisor/.test(u.id) ? 1 : 0);
+  const updateOrder = (list) => list.slice().sort((a, b) => updRank(a) - updRank(b) || a.name.localeCompare(b.name, 'fr'));
+
+  // One install at a time: the next starts when the current one is done (or failed / never started).
+  function pumpUpdates() {
+    const q = app.updQueue;
+    if (!q) return;
+    if (q.current) {
+      const st = app.states.get(q.current);
+      if (st && st.attributes.in_progress) { q.started = true; return; }
+      if (st && !q.started && st.state === 'on' && Date.now() - q.at < 20000) return; // not started yet
+      if (st && st.state === 'on') q.failed = (q.failed || 0) + 1;
+      q.current = null;
+    }
+    const next = q.list.shift();
+    if (!next) {
+      app.updQueue = null;
+      showToast(q.failed ? plural(q.failed, 'mise à jour n\'a pas abouti', 'mises à jour n\'ont pas abouti') + ' : réessayez-les une par une.' : 'Toutes les mises à jour sont installées.');
+      return;
+    }
+    q.current = next.id; q.started = false; q.at = Date.now(); q.done++;
+    call('update', 'install', next.id, next.backup ? { backup: true } : {});
+    queueRender();
+  }
+
+  function updateAllModal(md) {
+    const list = updateOrder(pendingUpdates());
+    const seg = (act, value, opts) => `<div class="segmented inline" role="group">${opts.map(([v, label]) =>
+      `<button type="button" class="${value === v ? 'is-on' : ''}" aria-pressed="${value === v}" data-act="${act}" data-arg="${esc(v)}" data-key="${act}:${esc(v)}">${label}</button>`).join('')}</div>`;
+    const anyBackup = list.some((u) => u.backup);
+    const body = `<p class="muted">Installées une par une, dans cet ordre (Home Assistant et le système en dernier, car ils redémarrent) :</p>
+      <ol class="upd-order">${list.map((u) => `<li><span>${esc(u.name)}</span><span class="upd-ver">${esc(u.installed)} → <b>${esc(u.latest)}</b></span></li>`).join('')}</ol>
+      ${anyBackup ? `<div class="field-row"><span class="field-label">Sauvegarde</span>${seg('upd-backup', md.backup === false ? '' : 'on', [['on', 'Avant de commencer'], ['', 'Non']])}</div>` : ''}
+      <p class="muted small">Gardez cette page ouverte jusqu'à la fin : c'est elle qui lance la mise à jour suivante.</p>`;
+    const foot = `<span class="grow"></span><button class="btn-glass" data-act="modal-close" data-key="modal-close">Annuler</button>
+      <button class="btn-solid" data-act="update-all" data-key="upd-all" ${list.length ? '' : 'disabled'}>${icon(IC.download, 16, 2)} Tout installer (${list.length})</button>`;
+    return modalFrame('Tout mettre à jour', body, foot);
+  }
+
   function updateModal(md) {
     const close = `<span class="grow"></span><button class="btn-solid" data-act="modal-close" data-key="modal-close">Fermer</button>`;
     const st = app.states.get(md.entity);
@@ -990,7 +1031,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     const ctx = {
       states: app.states, index: app.index, global: !room, roomName: room ? room.name : null,
       targetTemp, roomSummaries, roomOrder, forecast: (st) => forecastFor(st, 'main'),
-      calendar: calendarFor, mediaUrl, proxmox: (() => { let v; return () => v || (v = proxmox()); })(),
+      calendar: calendarFor, mediaUrl, updQueue: () => app.updQueue, proxmox: (() => { let v; return () => v || (v = proxmox()); })(),
       rememberEvents: (id, events) => { app.calEvents = app.calEvents || {}; app.calEvents[id] = events; }
     };
     const body = mods.map((m) => moduleView(m, ctx, e)).join('') +
@@ -1224,6 +1265,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     if (md.kind === 'media') return mediaModal(md);
     if (md.kind === 'bg') return bgModal();
     if (md.kind === 'update') return updateModal(md);
+    if (md.kind === 'update-all') return updateAllModal(md);
     if (md.kind === 'add') {
       const e = env(pageRoom());
       const scope = pageRoom() ? 'room' : 'all';
@@ -1841,6 +1883,18 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       render();
     },
     'draft-rooms-all'() { delete app.modal.draft.options.rooms; render(); },
+    'update-all-open'() { app.modal = { kind: 'update-all' }; render(); },
+    'update-all'() {
+      const list = updateOrder(pendingUpdates());
+      if (!list.length) return;
+      const backup = !(app.modal && app.modal.backup === false);
+      // Backup once, before Home Assistant itself (the one that matters to roll back).
+      const core = list.find((u) => /core/.test(u.id) && u.backup) || list.find((u) => u.backup);
+      app.updQueue = { list: list.map((u) => ({ id: u.id, name: u.name, backup: backup && core === u })), current: null, done: -1, total: list.length };
+      app.modal = null;
+      pumpUpdates();
+      render();
+    },
     'update-open'(id) { app.modal = { kind: 'update', entity: id }; render(); },
     'upd-backup'(arg) { if (app.modal) { app.modal.backup = arg === 'on'; render(); } },
     'update-install'(id) {
@@ -2293,6 +2347,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     const now = new Date();
     $app.querySelectorAll('[data-clock]').forEach((el) => { const v = fmtClock(now, el.dataset.clock); if (el.textContent !== v) el.textContent = v; });
     $app.querySelectorAll('[data-date]').forEach((el) => { const v = fmtDate(now, el.dataset.date); if (el.textContent !== v) el.textContent = v; });
+    if (app.updQueue) pumpUpdates();
     $app.querySelectorAll('[data-retry-in]').forEach((el) => {
       const left = app.conn && app.conn.nextTry ? Math.ceil((app.conn.nextTry - Date.now()) / 1000) : 0;
       const v = left > 0 ? ' dans ' + left + ' s' : ' en cours…';

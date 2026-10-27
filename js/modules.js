@@ -687,6 +687,11 @@ window.HD = window.HD || {};
   function updates(m, list, c) {
     const items = list.map(updateInfo).sort((x, y) => (y.pending - x.pending) || (y.busy - x.busy) || x.name.localeCompare(y.name, 'fr'));
     const n = items.filter((u) => u.pending).length;
+    // "Tout mettre à jour": the ones still waiting their turn.
+    const q = c.updQueue ? c.updQueue() : null;
+    const queued = (id) => !!q && (q.current === id || q.list.some((x) => x.id === id));
+    const allBtn = n > 1 && !q ? `<button class="btn-solid sm" data-act="update-all-open" data-key="${m.id}:all">${icon(IC.download, 15, 2.2)} Tout mettre à jour</button>`
+      : q ? `<span class="muted small">Installation ${q.done + 1} sur ${q.total}…</span>` : '';
     const pic = (u) => `<span class="upd-ic">${icon(IC.download, 18, 2)}${u.picture ? `<img src="${esc(c.mediaUrl(u.picture))}" alt="" loading="lazy" onerror="this.remove()">` : ''}</span>`;
     const row = (u) => `<li class="upd${u.pending ? ' is-pending' : ''}${u.busy ? ' is-busy' : ''}">
       ${pic(u)}
@@ -696,11 +701,12 @@ window.HD = window.HD || {};
         ${u.busy ? `<span class="upd-prog"><i style="width: ${u.pct != null ? Math.max(4, Math.min(100, u.pct)) : 30}%"${u.pct == null ? ' class="indet"' : ''}></i></span>` : u.pending && u.summary && m.w > 1 ? `<span class="upd-sum">${esc(u.summary.replace(/\s+/g, ' ').slice(0, 140))}</span>` : ''}
       </button>
       ${u.busy ? `<span class="upd-state">${u.pct != null ? Math.round(u.pct) + ' %' : 'Installation…'}</span>`
+        : queued(u.id) ? '<span class="upd-state is-wait">En attente</span>'
         : u.pending ? `<button class="btn-solid sm" data-act="update-open" data-arg="${esc(u.id)}" data-key="${m.id}:i:${esc(u.id)}" ${u.off ? 'disabled' : ''}>Installer</button>`
         : `<span class="upd-ok">${icon(IC.check, 16, 2.4)}</span>`}
     </li>`;
     const pending = items.filter((u) => u.pending || u.busy), done = items.filter((u) => !u.pending && !u.busy);
-    return head(m.title || 'Mises à jour', n ? plural(n, 'disponible', 'disponibles') : 'Tout est à jour') + `
+    return `<div class="mod-head"><h2>${esc(m.title || 'Mises à jour')}</h2><span class="upd-head">${allBtn || `<span class="muted small">${n ? plural(n, 'disponible', 'disponibles') : 'Tout est à jour'}</span>`}</span></div>` + `
       <ul class="upd-list" data-scroll="${m.id}">
         ${pending.map(row).join('')}
         ${!pending.length ? `<li class="upd-all-ok">${icon(IC.check, 28, 2.2)}<span>Home Assistant et ses modules sont à jour.</span></li>` : ''}
