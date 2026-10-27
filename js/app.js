@@ -1002,7 +1002,14 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
   function memoList() {
     const want = memo().list;
     if (want === 'local') return null;
-    return want || todoIds().find(isBring) || null;
+    if (want) return want;
+    const ids = todoIds();
+    const bring = ids.find(isBring);
+    if (bring) return bring;
+    // Non-admin account: the entity registry (which says "bring") is not readable; take the first real list.
+    const reg = app.index && app.index.reg;
+    const unknown = ids.filter((id) => !(reg && reg.get(id) && reg.get(id).platform) && id !== 'todo.shopping_list');
+    return unknown[0] || null;
   }
   // Items of a to-do list, subscribed on first use: HA pushes every change (a phone adding an item too).
   function todoSlot(id) {
