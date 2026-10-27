@@ -98,12 +98,35 @@ automatiquement à partir des appareils trouvés (les nouveaux appareils apparai
 | **Météo** | `weather.*` ; en largeur ≥ 2 ou hauteur ≥ 3, les prévisions des jours suivants ; un toucher ouvre le détail (ressenti, vent, pression, 24 h, 7 jours) |
 | **Calendrier** | `calendar.*` (Google Calendar, Calendrier distant iCal, calendrier local…) : une couleur par calendrier, détail au toucher ; période réglable (aujourd'hui à 30 jours) ; 4 affichages (⚙ › Affichage) : **Compact** (une ligne : heure + titre), **Liste** (horaires, lieu), **Détaillé** (en plus calendrier et début de description), **Semaine** (une colonne par jour, largeur 2 ou plus). Les mêmes réglages existent pour l'Agenda de l'accueil |
 | **Départs train / RER** | perturbations de la ligne en tête (suppressions et retards de l'heure, et événements « RER D : … » / « Ligne D : … » de vos calendriers, masqués des agendas) ; prochains départs temps réel IDFM (capteur REST, voir `homeassistant/rer_d_le_mee.yaml`) : minutes restantes, heure, destination, mission, voie, retards et suppressions ; une colonne par direction quand il est large, ou filtré sur une direction |
-| **Spotify / musique** | lecteur `media_player` (Spotify en priorité) : pochette, titre, progression, précédent / lecture / suivant, aléatoire, répétition, volume, choix de l'enceinte (Spotify Connect) et **Playlists** (bibliothèque du lecteur). Une disposition par taille : 1×1 pochette + lecture/suivant, une ligne = barre, 1×2 pochette à côté du titre, 1×3 et plus grande pochette. Voir *Spotify* plus bas |
+| **Spotify / musique** | lecteur `media_player` (Spotify en priorité) : pochette, titre, progression, précédent / lecture / suivant, aléatoire, répétition, volume, choix de l'enceinte (Spotify Connect) et **Playlists** (bibliothèque du lecteur). Deux dispositions inspirées de l'appli Spotify : en petit (1×1, 1×2, une ligne) pochette + titre + boutons, barre de progression, enceinte · volume · playlists ; à partir de 2×2 (ou 1×3) grande pochette en haut. Voir *Spotify* plus bas |
 | **Notes** | mémo libre, enregistré automatiquement dans votre compte Home Assistant |
 | **Automatisations** | activer/désactiver `automation.*`, lancer `script.*` |
 | **Pièces** | résumé de chaque pièce, un clic ouvre la pièce |
+| **Mises à jour** | entités `update.*` (Home Assistant Core, OS, modules complémentaires, HACS, appareils) : version installée → disponible, notes de version, installation avec ou sans sauvegarde, « Ignorer cette version », progression en direct |
+| **Serveur Proxmox** | nœud Proxmox : processeur, mémoire, disque (anneaux en grand, barres en petit), réseau, durée de fonctionnement, stockages |
+| **VM et conteneurs** | VM et LXC Proxmox : en marche / arrêtée, CPU et RAM, démarrer, éteindre, redémarrer (avec confirmation) |
 
 Les entités masquées, désactivées ou de catégorie *config/diagnostic* sont ignorées.
+
+## Pages Serveur et Mises à jour
+
+- **Mises à jour** (icône ⬇ de la barre, avec une pastille rouge du nombre disponible) : tout ce que
+  Home Assistant propose de mettre à jour ; touchez une ligne pour les notes de version et l'installation.
+- **Serveur** : votre Proxmox, en direct. Il faut l'intégration **Proxmox VE** (HACS : *Proxmox VE*,
+  puis Paramètres › Appareils et services › Ajouter › Proxmox VE, avec un utilisateur API Proxmox).
+  Chaque nœud, VM, conteneur et stockage devient un appareil ; les valeurs se mettent à jour à
+  l'intervalle de l'intégration. Les boutons Démarrer / Éteindre / Redémarrer utilisent les boutons
+  de l'intégration.
+
+Les deux pages sont des pages de modules comme les autres (crayon pour les modifier) et ces modules
+peuvent aussi être ajoutés à l'accueil.
+
+**Connexion perdue** : la page se floute et une fenêtre au centre indique la reconnexion automatique
+(avec le délai avant le prochain essai) et un bouton « Réessayer maintenant ». La reconnexion repart
+aussi dès que le réseau revient ou que l'écran se rallume.
+
+**Fluidité** : l'écran n'est plus redessiné en entier à chaque changement ; seuls les éléments modifiés
+sont mis à jour (`js/morph.js`), avec des transitions (changement de page, fenêtres, boutons, jauges).
 
 ## Réglages
 - **Pièces** : ordre des onglets, masquer une pièce, réinitialiser sa disposition
@@ -152,6 +175,7 @@ Spotify une fois sur l'appareil voulu.
 - `js/model.js` — pièces, appareils, libellés d'état en français
 - `js/modules.js` — catalogue des modules (ce qu'ils acceptent et comment ils s'affichent)
 - `js/layout.js` — disposition : sauvegarde, dispositions automatiques, choix des entités
-- `js/app.js` — pages, mode édition, fenêtres de paramétrage, actions
+- `js/app.js` — pages, mode édition, fenêtres de paramétrage, actions, Proxmox, mises à jour
+- `js/morph.js` — mise à jour de la page sur place (sans tout redessiner)
 - `js/demo.js` — faux serveur pour la démo
 - `styles.css` — styles « verre » de la maquette

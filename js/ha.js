@@ -66,7 +66,9 @@ HD.HAConnection = class HAConnection {
         if (this.closedByUser || this.authFailed) return;
         this.emit('status', 'reconnecting');
         const delay = Math.min(30000, 1000 * 2 ** this.retry++);
-        setTimeout(() => this.connect().catch(() => {}), delay);
+        this.nextTry = Date.now() + delay;
+        clearTimeout(this.reconTimer);
+        this.reconTimer = setTimeout(() => { this.nextTry = 0; this.connect().catch(() => {}); }, delay);
       };
     });
   }
@@ -137,6 +139,20 @@ HD.HAConnection = class HAConnection {
       this.send({ type: 'get_config' }).catch(() => ({}))
     ]);
     return { states, areas, devices, entities, config };
+  }
+
+  // Markdown release notes of an update entity.
+  releaseNotes(entityId) {
+    return this.send({ type: 'update/release_notes', entity_id: entityId });
+  }
+
+  // Try again right away (button of the "connection lost" dialog, network back, screen woken up).
+  retryNow() {
+    if (this.closedByUser || this.authFailed || !this.reconTimer || !this.nextTry) return;
+    clearTimeout(this.reconTimer);
+    this.nextTry = 0;
+    this.retry = 0;
+    this.connect().catch(() => {});
   }
 
   callService(domain, service, entityIds, data = {}) {

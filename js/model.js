@@ -71,7 +71,9 @@ window.HD = window.HD || {};
     }
     rooms.push(other);
     byId.set(other.id, other);
-    return { rooms, byId, areaOf, deviceOf, visible };
+    // Full registries too: update and Proxmox entities are often "config" / "diagnostic" ones.
+    const devices = new Map(data.devices.map((d) => [d.id, d]));
+    return { rooms, byId, areaOf, deviceOf, visible, reg, devices };
   }
 
   function addEntity(index, id) {

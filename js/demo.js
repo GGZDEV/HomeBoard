@@ -97,13 +97,63 @@ HD.DemoConnection = class DemoConnection {
       S('sensor.conso_pc', '182', { friendly_name: 'Prise PC', device_class: 'power', unit_of_measurement: 'W' }, 'bureau'),
       S('sensor.energie_jour', '8.6', { friendly_name: 'Énergie aujourd\'hui', device_class: 'energy', unit_of_measurement: 'kWh' })
     ];
+    // Proxmox VE server (as the HACS integration exposes it: one device per node / VM / container).
+    this.devices = [
+      { id: 'pve_node', name: 'Node pve', model: 'Node', manufacturer: 'Proxmox VE' },
+      { id: 'pve_101', name: 'VM homeassistant (101)', model: 'QEMU', manufacturer: 'Proxmox VE' },
+      { id: 'pve_102', name: 'LXC adguard (102)', model: 'LXC', manufacturer: 'Proxmox VE' },
+      { id: 'pve_103', name: 'LXC jellyfin (103)', model: 'LXC', manufacturer: 'Proxmox VE' },
+      { id: 'pve_104', name: 'VM windows11 (104)', model: 'QEMU', manufacturer: 'Proxmox VE' },
+      { id: 'pve_st', name: 'Storage local-lvm (pve)', model: 'Storage', manufacturer: 'Proxmox VE' }
+    ];
+    const P = (entity_id, state, attributes, device, cat) => ({ entity_id, state: String(state), attributes, device, platform: 'proxmoxve', cat });
+    const pct = (name) => ({ friendly_name: name, unit_of_measurement: '%', state_class: 'measurement' });
+    const boot = (h) => new Date(now - h * 3600e3).toISOString();
+    const guest = (id, dev, name, on, cpu, mem, upH) => [
+      P(`binary_sensor.${id}_status`, on ? 'on' : 'off', { friendly_name: name + ' Status', device_class: 'running' }, dev),
+      P(`sensor.${id}_cpu_used`, on ? cpu : 0, pct(name + ' CPU used'), dev, 'diagnostic'),
+      P(`sensor.${id}_memory_used_percentage`, on ? mem : 0, pct(name + ' Memory used percentage'), dev, 'diagnostic'),
+      P(`sensor.${id}_uptime`, on ? boot(upH) : 'unknown', { friendly_name: name + ' Uptime', device_class: 'timestamp' }, dev, 'diagnostic'),
+      P(`button.${id}_start`, 'unknown', { friendly_name: name + ' Start' }, dev, 'config'),
+      P(`button.${id}_shutdown`, 'unknown', { friendly_name: name + ' Shutdown' }, dev, 'config'),
+      P(`button.${id}_reboot`, 'unknown', { friendly_name: name + ' Reboot' }, dev, 'config'),
+      P(`button.${id}_stop`, 'unknown', { friendly_name: name + ' Stop' }, dev, 'config')
+    ];
+    list.push(
+      P('binary_sensor.pve_status', 'on', { friendly_name: 'pve Status', device_class: 'running' }, 'pve_node'),
+      P('sensor.pve_cpu_used', 23, pct('pve CPU used'), 'pve_node', 'diagnostic'),
+      P('sensor.pve_memory_used_percentage', 61, pct('pve Memory used percentage'), 'pve_node', 'diagnostic'),
+      P('sensor.pve_memory_used', 19.5, { friendly_name: 'pve Memory used', unit_of_measurement: 'GB' }, 'pve_node', 'diagnostic'),
+      P('sensor.pve_memory_total', 32, { friendly_name: 'pve Memory total', unit_of_measurement: 'GB' }, 'pve_node', 'diagnostic'),
+      P('sensor.pve_disk_used_percentage', 47, pct('pve Disk used percentage'), 'pve_node', 'diagnostic'),
+      P('sensor.pve_network_in', 2.4, { friendly_name: 'pve Network in', unit_of_measurement: 'MB/s' }, 'pve_node', 'diagnostic'),
+      P('sensor.pve_network_out', 0.8, { friendly_name: 'pve Network out', unit_of_measurement: 'MB/s' }, 'pve_node', 'diagnostic'),
+      P('sensor.pve_uptime', boot(24 * 12 + 5), { friendly_name: 'pve Uptime', device_class: 'timestamp' }, 'pve_node', 'diagnostic'),
+      ...guest('homeassistant', 'pve_101', 'homeassistant', true, 8, 54, 24 * 3 + 2),
+      ...guest('adguard', 'pve_102', 'adguard', true, 2, 18, 24 * 12),
+      ...guest('jellyfin', 'pve_103', 'jellyfin', true, 37, 72, 40),
+      ...guest('windows11', 'pve_104', 'windows11', false, 0, 0, 0),
+      P('sensor.local_lvm_disk_used_percentage', 58, pct('local-lvm Disk used percentage'), 'pve_st', 'diagnostic')
+    );
+    // Updates (HA marks them "config": hidden from the rest of the dashboard).
+    const U = (id, title, installed, latest, extra) => ({ entity_id: 'update.' + id, state: installed === latest ? 'off' : 'on', device: null, cat: 'config', platform: 'hassio',
+      attributes: { friendly_name: title + ' Update', title, installed_version: installed, latest_version: latest, in_progress: false, auto_update: false,
+        supported_features: 1 | 4 | 8 | 16, release_url: 'https://www.home-assistant.io/blog/', ...extra } });
+    list.push(
+      U('home_assistant_core_update', 'Home Assistant Core', '2026.10.1', '2026.10.3', { release_summary: 'Corrections de bugs : Zigbee, Matter et tableau de bord énergie.' }),
+      U('home_assistant_operating_system_update', 'Home Assistant Operating System', '16.2', '16.2'),
+      U('mosquitto_broker_update', 'Mosquitto broker', '6.5.1', '6.5.2', { release_summary: 'Mise à jour de sécurité.' }),
+      U('zigbee2mqtt_update', 'Zigbee2MQTT', '2.6.0', '2.6.2'),
+      U('hacs_update', 'HACS', '2.0.5', '2.0.5', { supported_features: 1 }),
+      U('proxmoxve_update', 'Proxmox VE (intégration)', '3.6.1', '3.6.1', { supported_features: 1 | 16 })
+    );
     this.states = new Map();
     this.entities = [];
     for (const s of list) {
-      const { area, device, ...st } = s;
+      const { area, device, platform, cat, ...st } = s;
       st.last_changed = st.last_updated = new Date(now).toISOString();
       this.states.set(st.entity_id, st);
-      this.entities.push({ entity_id: st.entity_id, area_id: area || null, device_id: device || null });
+      this.entities.push({ entity_id: st.entity_id, area_id: area || null, device_id: device || null, platform: platform || 'demo', entity_category: cat || null });
     }
     // RER D at Le Mée, in the SIRI Lite shape PRIM returns; regenerated every 2 min like the HA sensor.
     const rer = () => {
@@ -131,6 +181,10 @@ HD.DemoConnection = class DemoConnection {
 
     // Thermometers drift a little so the demo feels alive.
     this.timer = setInterval(() => {
+      for (const id of ['sensor.pve_cpu_used', 'sensor.jellyfin_cpu_used', 'sensor.homeassistant_cpu_used']) {
+        const st = this.states.get(id);
+        if (st && Number(st.state) > 0) this.set(id, String(Math.max(1, Math.min(95, Math.round(Number(st.state) + (Math.random() - 0.5) * 12)))));
+      }
       for (const st of this.states.values()) {
         if (st.attributes.device_class !== 'temperature') continue;
         const v = Math.round((Number(st.state) + (Math.random() - 0.5) * 0.2) * 10) / 10;
@@ -150,7 +204,7 @@ HD.DemoConnection = class DemoConnection {
   async fetchAll() {
     return {
       states: [...this.states.values()].map((s) => JSON.parse(JSON.stringify(s))),
-      areas: this.areas, devices: [], entities: this.entities, config: { location_name: 'Démo' }
+      areas: this.areas, devices: this.devices, entities: this.entities, config: { location_name: 'Démo' }
     };
   }
 
@@ -169,6 +223,8 @@ HD.DemoConnection = class DemoConnection {
       const st = this.states.get(id);
       if (!st) continue;
       const d = id.split('.')[0];
+      if (d === 'update') { this.update(id, st, service); continue; }
+      if (d === 'button') { this.pvePress(id); continue; }
       const isOn = !['off', 'closed', 'unlocked', 'standby'].includes(st.state);
       if (service === 'toggle') {
         if (d === 'cover') this.set(id, isOn ? 'closed' : 'open', { current_position: isOn ? 0 : 100 });
@@ -192,6 +248,42 @@ HD.DemoConnection = class DemoConnection {
       else if (d === 'media_player' && service !== 'toggle') this.media(id, st, service, data);
       else if (service === 'trigger') this.set(id, null, { last_triggered: new Date().toISOString() });
     }
+  }
+
+  // Fake install: progress over ~10 s, then the new version is the installed one.
+  update(id, st, service) {
+    const latest = st.attributes.latest_version;
+    if (service === 'skip') { this.set(id, 'off', { skipped_version: latest }); return; }
+    if (service !== 'install') return;
+    let p = 0;
+    this.set(id, 'on', { in_progress: true, update_percentage: 0 });
+    const t = setInterval(() => {
+      p += 20;
+      if (p >= 100) { clearInterval(t); this.set(id, 'off', { in_progress: false, update_percentage: null, installed_version: latest }); }
+      else this.set(id, 'on', { update_percentage: p });
+    }, 2000);
+  }
+
+  // Proxmox buttons: start / shutdown / stop / reboot of a VM or container.
+  pvePress(id) {
+    const m = id.match(/^button\.(.+)_(start|shutdown|stop|reboot)$/);
+    if (!m) return;
+    const [, g, cmd] = m;
+    const on = cmd === 'start' || cmd === 'reboot';
+    const now = new Date().toISOString();
+    if (cmd === 'reboot') this.set(`binary_sensor.${g}_status`, 'off');
+    setTimeout(() => {
+      this.set(`binary_sensor.${g}_status`, on ? 'on' : 'off');
+      this.set(`sensor.${g}_cpu_used`, on ? '12' : '0');
+      this.set(`sensor.${g}_memory_used_percentage`, on ? '35' : '0');
+      this.set(`sensor.${g}_uptime`, on ? now : 'unknown');
+    }, cmd === 'reboot' ? 3000 : 1500);
+  }
+
+  releaseNotes(id) {
+    const st = this.states.get(id);
+    const t = st ? st.attributes.title : '';
+    return new Promise((resolve) => setTimeout(() => resolve(`## ${t} ${st ? st.attributes.latest_version : ''}\n\n**Nouveautés**\n- Démarrage plus rapide\n- Corrections de bugs\n- Traductions mises à jour\n\n[Voir le détail](https://www.home-assistant.io/blog/)`), 300));
   }
 
   // Spotify-like player: tracks loop through a small fake playlist.

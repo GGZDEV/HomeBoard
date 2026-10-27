@@ -151,7 +151,8 @@ window.HD = window.HD || {};
       if (Array.isArray(m.entities)) {
         list = m.entities.map(get).filter(Boolean);
       } else {
-        const pool = m.scope === 'room' && env.room ? env.room.ids : [...env.index.visible];
+        // Update entities are "config" ones (hidden from the rest of the dashboard): look at all of them.
+        const pool = t.allStates ? [...env.states.keys()] : m.scope === 'room' && env.room ? env.room.ids : [...env.index.visible];
         list = pool.map(get).filter((s) => s && (t.auto || t.pick)(s));
         if (m.type === 'scenes' && !list.length && m.scope === 'room') {
           // No scene assigned to this room: offer the house-wide ones.
@@ -203,6 +204,8 @@ window.HD = window.HD || {};
       if (key === 'auto') {
         return [has('scenes', 'all') && mod('scenes', 2, 4, 'all'), has('automations', 'all') && mod('automations', 2, 4, 'all')].filter(Boolean);
       }
+      if (key === 'updates') return [mod('updates', 4, 4, 'all')];
+      if (key === 'server') return [mod('pve-node', 2, 4, 'all'), mod('pve-guests', 2, 4, 'all')];
       if (key === 'energy') {
         return [has('energy', 'all') && mod('energy', 4, 4, 'all')].filter(Boolean);
       }

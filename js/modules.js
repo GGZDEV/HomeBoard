@@ -619,7 +619,6 @@ window.HD = window.HD || {};
     const active = playing || st.state === 'paused';
     const off = M.UNAVAILABLE.includes(st.state);
     const spotify = isSpotify(st);
-    const title = m.title || (spotify ? 'Spotify' : M.shortName(st, c.roomName));
     const art = active && a.entity_picture ? c.mediaUrl(a.entity_picture) : '';
     const dur = Number(a.media_duration) || 0;
     const pos = mediaPos(st);
@@ -627,49 +626,150 @@ window.HD = window.HD || {};
     const k = (s) => `${m.id}:${s}`;
     const btn = (cmd, ic, label, extra = '') => `<button class="media-btn${extra}" data-act="media-cmd" data-arg="${cmd}" data-key="${k(cmd)}" aria-label="${label}" title="${label}" ${off ? 'disabled' : ''}>${icon(ic, cmd === 'play_pause' ? 26 : 20, 2)}</button>`;
     const repeat = a.repeat || 'off';
-    const device = srcs.length
-      ? `<label class="media-src"><span class="sr-only">Appareil de lecture</span>${icon(IC.speaker, 15, 2)}
+    const what = off ? 'Indisponible' : active ? (a.media_title || 'Lecture en cours')
+      : srcs.length && !a.source ? 'Choisissez un appareil' : 'Rien en lecture';
+    const who = active ? [a.media_artist, a.media_album_name].filter(Boolean).join(' · ') : (spotify ? 'Lancez une playlist ou reprenez la lecture' : M.shortName(st, c.roomName));
+    // Two layouts, after the Spotify app: a compact card (cover beside the title) on small sizes,
+    // the big cover on top from 2×2 (or 1×3) up.
+    const big = (m.w >= 2 && m.h >= 2) || m.h >= 3;
+    const tiny = m.w === 1 && m.h === 1;
+    const controls = `<div class="media-ctrls">
+        ${big ? btn('shuffle', IC.shuffle, a.shuffle ? 'Lecture aléatoire activée' : 'Lecture aléatoire', a.shuffle ? ' is-on' : '') : ''}
+        ${tiny ? '' : btn('prev', IC.prev, 'Précédent')}
+        ${btn('play_pause', playing ? IC.pause : IC.play, playing ? 'Pause' : 'Lecture', ' is-main')}
+        ${btn('next', IC.next, 'Suivant')}
+        ${big ? btn('repeat', IC.repeat, repeat === 'one' ? 'Répéter le titre' : repeat === 'all' ? 'Répéter tout' : 'Répéter', repeat !== 'off' ? ' is-on' + (repeat === 'one' ? ' is-one' : '') : '') : ''}
+      </div>`;
+    const vol = a.volume_level != null ? Math.round(Number(a.volume_level) * 100) : null;
+    const img = (cls) => art ? `<img class="${cls}" src="${esc(art)}" alt="" loading="lazy">` : '';
+    const text = `<div class="stack media-text"><span class="media-title">${esc(what)}</span>${who ? `<span class="media-who">${esc(who)}</span>` : ''}</div>`;
+    const progress = `<div class="media-progress${dur ? '' : ' is-empty'}" data-media-pos data-pos="${pos}" data-at="${Date.now()}" data-dur="${dur || 1}" data-playing="${playing && dur ? 1 : 0}">
+      <span class="mp-time" data-cur>${dur ? mmss(pos) : '0:00'}</span>
+      <span class="mp-bar"><i style="width: ${dur ? Math.min(100, (pos / dur) * 100).toFixed(2) : 0}%"></i></span>
+      <span class="mp-time">${dur ? mmss(dur) : '0:00'}</span></div>`;
+    // Speaker picker: an icon, with the (invisible) list of Spotify Connect devices on top of it.
+    const deviceIc = srcs.length
+      ? `<label class="media-ic" title="${esc(a.source || 'Choisir un appareil')}"><span class="sr-only">Appareil de lecture</span>${icon(IC.tv, 18, 1.8)}
           <select data-act="media-source" data-key="${k('src')}" ${off ? 'disabled' : ''}>
             ${a.source ? '' : '<option value="">Choisir un appareil…</option>'}
             ${srcs.map((s) => `<option value="${esc(s)}"${s === a.source ? ' selected' : ''}>${esc(s)}</option>`).join('')}
           </select></label>`
-      : a.source ? `<span class="muted small">${esc(a.source)}</span>` : '';
-    const what = off ? 'Indisponible' : active ? (a.media_title || 'Lecture en cours')
-      : srcs.length && !a.source ? 'Choisissez un appareil' : 'Rien en lecture';
-    const who = active ? [a.media_artist, a.media_album_name].filter(Boolean).join(' · ') : (spotify ? 'Lancez une playlist ou reprenez la lecture' : '');
-    // One layout per size: 1 row = a bar, 1 column = stacked, otherwise the full player.
-    const bar = m.h === 1;
-    const tiny = bar && m.w === 1;
-    const narrow = m.w === 1 && !bar;
-    const big = narrow && m.h >= 3;
-    const controls = `<div class="media-ctrls">
-        ${bar || (narrow && !big) ? '' : btn('shuffle', IC.shuffle, a.shuffle ? 'Lecture aléatoire activée' : 'Lecture aléatoire', a.shuffle ? ' is-on' : '')}
-        ${tiny ? '' : btn('prev', IC.prev, 'Précédent')}
-        ${btn('play_pause', playing ? IC.pause : IC.play, playing ? 'Pause' : 'Lecture', ' is-main')}
-        ${btn('next', IC.next, 'Suivant')}
-        ${bar || (narrow && !big) ? '' : btn('repeat', IC.repeat, repeat === 'one' ? 'Répéter le titre' : repeat === 'all' ? 'Répéter tout' : 'Répéter', repeat !== 'off' ? ' is-on' + (repeat === 'one' ? ' is-one' : '') : '')}
+      : `<span class="media-ic is-static" title="${esc(a.source || '')}">${icon(IC.tv, 18, 1.8)}</span>`;
+    const volHtml = vol != null
+      ? `<input class="thin-range" type="range" min="0" max="100" value="${vol}" style="--v: ${vol}%" data-act="media-vol" data-key="${k('vol')}" aria-label="Volume" ${off ? 'disabled' : ''}>`
+      : '<span class="grow"></span>';
+    const browse = `<button class="media-ic" data-act="media-browse" data-arg="${esc(st.entity_id)}" data-key="${k('browse')}" ${off ? 'disabled' : ''} aria-label="${spotify ? 'Playlists' : 'Bibliothèque'}" title="${spotify ? 'Playlists' : 'Bibliothèque'}">${icon(IC.list, 18, 1.8)}</button>`;
+    const foot = `<div class="media-foot">${deviceIc}${volHtml}${browse}</div>`;
+    const cls = `media-layout${spotify ? ' is-spotify' : ''} ${big ? 'ml-big' : 'ml-card'}${tiny ? ' ml-tiny' : ''}`;
+    if (!big) {
+      return `<div class="${cls}">
+        <div class="media-now"><div class="media-art">${img('fg') || icon(IC.music, 26, 1.8)}</div>${text}${controls}</div>
+        ${progress}${foot}</div>`;
+    }
+    return `<div class="${cls}">
+      <div class="media-hero">${img('bg')}${img('fg') || `<span class="media-ph">${icon(IC.music, 40, 1.6)}</span>`}
+        ${spotify ? '<span class="spotify-dot" title="Spotify"></span>' : ''}</div>
+      ${text}${controls}${progress}${foot}</div>`;
+  }
+
+  // ---------- Home Assistant updates (update.* entities: core, OS, add-ons, HACS, devices) ----------
+  const UPD_BACKUP = 8, UPD_NOTES = 16;
+  function updateInfo(st) {
+    const a = st.attributes;
+    const pct = a.update_percentage != null ? Number(a.update_percentage) : typeof a.in_progress === 'number' ? a.in_progress : null;
+    return {
+      id: st.entity_id, name: a.title || M.shortName(st), pending: st.state === 'on', busy: !!a.in_progress, pct,
+      installed: a.installed_version || '?', latest: a.latest_version || '', summary: a.release_summary || '', url: a.release_url || '',
+      picture: a.entity_picture || '', skipped: a.skipped_version || '',
+      backup: !!(Number(a.supported_features) & UPD_BACKUP), notes: !!(Number(a.supported_features) & UPD_NOTES), off: M.UNAVAILABLE.includes(st.state)
+    };
+  }
+  function updates(m, list, c) {
+    const items = list.map(updateInfo).sort((x, y) => (y.pending - x.pending) || (y.busy - x.busy) || x.name.localeCompare(y.name, 'fr'));
+    const n = items.filter((u) => u.pending).length;
+    const pic = (u) => `<span class="upd-ic">${icon(IC.download, 18, 2)}${u.picture ? `<img src="${esc(c.mediaUrl(u.picture))}" alt="" loading="lazy" onerror="this.remove()">` : ''}</span>`;
+    const row = (u) => `<li class="upd${u.pending ? ' is-pending' : ''}${u.busy ? ' is-busy' : ''}">
+      ${pic(u)}
+      <button class="upd-main" data-act="update-open" data-arg="${esc(u.id)}" data-key="${m.id}:${esc(u.id)}">
+        <span class="upd-name">${esc(u.name)}</span>
+        <span class="upd-ver">${u.pending ? `${esc(u.installed)} <span class="upd-arrow">→</span> <b>${esc(u.latest)}</b>` : esc(u.installed)}</span>
+        ${u.busy ? `<span class="upd-prog"><i style="width: ${u.pct != null ? Math.max(4, Math.min(100, u.pct)) : 30}%"${u.pct == null ? ' class="indet"' : ''}></i></span>` : u.pending && u.summary && m.w > 1 ? `<span class="upd-sum">${esc(u.summary.replace(/\s+/g, ' ').slice(0, 140))}</span>` : ''}
+      </button>
+      ${u.busy ? `<span class="upd-state">${u.pct != null ? Math.round(u.pct) + ' %' : 'Installation…'}</span>`
+        : u.pending ? `<button class="btn-solid sm" data-act="update-open" data-arg="${esc(u.id)}" data-key="${m.id}:i:${esc(u.id)}" ${u.off ? 'disabled' : ''}>Installer</button>`
+        : `<span class="upd-ok">${icon(IC.check, 16, 2.4)}</span>`}
+    </li>`;
+    const pending = items.filter((u) => u.pending || u.busy), done = items.filter((u) => !u.pending && !u.busy);
+    return head(m.title || 'Mises à jour', n ? plural(n, 'disponible', 'disponibles') : 'Tout est à jour') + `
+      <ul class="upd-list" data-scroll="${m.id}">
+        ${pending.map(row).join('')}
+        ${!pending.length ? `<li class="upd-all-ok">${icon(IC.check, 28, 2.2)}<span>Home Assistant et ses modules sont à jour.</span></li>` : ''}
+        ${done.length ? `<li class="upd-sep muted small">À jour · ${done.length}</li>${done.map(row).join('')}` : ''}
+      </ul>`;
+  }
+
+  // ---------- Proxmox VE (integration "Proxmox VE" from HACS, or entities named proxmox) ----------
+  const loadColor = (v) => (v == null ? 'rgba(255,255,255,0.3)' : v >= 90 ? '#FF453A' : v >= 75 ? '#FF9F0A' : 'var(--accent)');
+  const clampPct = (p) => (p == null || !isFinite(p) ? null : Math.max(0, Math.min(100, p)));
+  function ring(pct, label, sub) {
+    const v = clampPct(pct);
+    const C = 2 * Math.PI * 42;
+    return `<span class="ring"><svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="42" class="ring-bg"></circle>
+      <circle cx="50" cy="50" r="42" class="ring-fg" style="stroke: ${loadColor(v)}; stroke-dasharray: ${C.toFixed(1)}; stroke-dashoffset: ${(C * (1 - (v || 0) / 100)).toFixed(1)}"></circle></svg>
+      <span class="ring-val">${v == null ? '–' : Math.round(v) + '<small>%</small>'}</span><span class="ring-label">${esc(label)}</span>${sub ? `<span class="ring-sub">${esc(sub)}</span>` : ''}</span>`;
+  }
+  function pbar(pct, label, sub) {
+    const v = clampPct(pct);
+    return `<span class="pbar"><span class="pbar-top"><span>${esc(label)}</span><b>${v == null ? '–' : Math.round(v) + ' %'}</b></span>
+      <span class="pbar-track"><i style="width: ${v || 0}%; background: ${loadColor(v)}"></i></span>${sub ? `<span class="muted small">${esc(sub)}</span>` : ''}</span>`;
+  }
+  const pveEmpty = (title) => head(title) + '<div class="mod-empty"><p class="muted small">Aucun serveur Proxmox trouvé. Installez l\'intégration « Proxmox VE » (HACS) dans Home Assistant et ajoutez votre serveur : ses nœuds, VM et conteneurs apparaîtront ici en direct.</p></div>';
+
+  function pveNode(m, list, c) {
+    const pve = c.proxmox();
+    const nodes = m.options.device ? pve.nodes.filter((x) => x.id === m.options.device) : pve.nodes;
+    if (!nodes.length) return pveEmpty(m.title || 'Serveur Proxmox');
+    const one = (n) => {
+      const mem = n.memUsed != null && n.memTotal ? M.fmtNum(n.memUsed, 1) + ' / ' + M.fmtNum(n.memTotal, 0) + ' ' + n.memUnit : '';
+      const gauges = m.w >= 2 && m.h >= 2
+        ? `<div class="rings">${ring(n.cpu, 'Processeur')}${ring(n.mem, 'Mémoire', mem)}${ring(n.disk, 'Disque')}</div>`
+        : `<div class="pbars">${pbar(n.cpu, 'Processeur')}${pbar(n.mem, 'Mémoire', m.h > 1 ? mem : '')}${m.h > 1 || m.w > 1 ? pbar(n.disk, 'Disque') : ''}</div>`;
+      const active = pve.guests.filter((g) => g.running).length;
+      const facts = [n.uptime ? 'Allumé ' + n.uptime : '', n.netIn ? '↓ ' + n.netIn : '', n.netOut ? '↑ ' + n.netOut : '',
+        pve.guests.length ? active + ' / ' + pve.guests.length + ' VM et conteneurs en marche' : ''].filter(Boolean);
+      const stor = m.h >= 3 && pve.storage.length ? `<div class="pbars">${pve.storage.map((x) => pbar(x.pct, x.name, x.sub)).join('')}</div>` : '';
+      return `<div class="pve-node">
+        <div class="pve-node-head"><span class="pve-dot${n.online === false ? ' is-off' : ''}"></span><b>${esc(n.name)}</b>${n.online === false ? '<span class="muted small">Hors ligne</span>' : ''}</div>
+        ${gauges}
+        ${facts.length && m.h > 1 ? `<div class="pve-facts">${facts.map((f) => `<span>${esc(f)}</span>`).join('')}</div>` : ''}
+        ${stor}
       </div>`;
-    const vol = a.volume_level != null ? Math.round(Number(a.volume_level) * 100) : null;
-    const artHtml = `<div class="media-art">${art ? `<img src="${esc(art)}" alt="" loading="lazy">` : icon(IC.music, tiny ? 22 : 30, 1.8)}</div>`;
-    const text = `<div class="stack media-text"><span class="media-title">${esc(what)}</span>${who ? `<span class="muted small media-who">${esc(who)}</span>` : ''}</div>`;
-    const progress = dur ? `<div class="media-progress" data-media-pos data-pos="${pos}" data-at="${Date.now()}" data-dur="${dur}" data-playing="${playing ? 1 : 0}">
-      <span class="mp-bar"><i style="width: ${Math.min(100, (pos / dur) * 100).toFixed(2)}%"></i></span>
-      ${narrow && !big ? '' : `<span class="mp-times muted small"><span data-cur>${mmss(pos)}</span><span>${mmss(dur)}</span></span>`}</div>` : '';
-    const browse = (label) => `<button class="btn-glass sm${label ? '' : ' icon-only'}" data-act="media-browse" data-arg="${esc(st.entity_id)}" data-key="${k('browse')}" ${off ? 'disabled' : ''} aria-label="${spotify ? 'Playlists' : 'Bibliothèque'}" title="${spotify ? 'Playlists' : 'Bibliothèque'}">${icon(IC.list, 16, 2)}${label ? ' ' + (spotify ? 'Playlists' : 'Bibliothèque') : ''}</button>`;
-    const volHtml = vol != null ? `<label class="slider media-vol">${icon(IC.volume, 16, 2)}<span class="slider-fill" data-vol-fill style="width: ${vol}%"></span>
-        <input class="range" type="range" min="0" max="100" value="${vol}" data-act="media-vol" data-key="${k('vol')}" aria-label="Volume" ${off ? 'disabled' : ''}></label>` : '<span class="grow"></span>';
-    // Narrow sizes: the speaker picker is just an icon (the select sits invisibly on top of it).
-    const deviceSm = srcs.length ? device.replace('class="media-src"', 'class="media-src icon-only"') : '';
-    const headHtml = (dev) => `<div class="mod-head"><h2>${spotify ? `<span class="spotify-dot"></span>` : ''}${esc(title)}</h2>${dev}</div>`;
-    const cls = `media-layout ${tiny ? 'ml-tiny' : bar ? 'ml-bar' : big ? 'ml-big' : narrow ? 'ml-narrow' : 'ml-full'}`;
-    if (tiny) return `<div class="${cls}"><div class="media-now">${artHtml}${text}</div>${controls}</div>`;
-    if (bar) return `<div class="${cls}"><div class="media-now">${artHtml}${text}${controls}${m.w >= 3 ? deviceSm.replace(' icon-only', '') : deviceSm}</div></div>`;
-    if (narrow && !big) return `<div class="${cls}">${headHtml(deviceSm)}<div class="media-now">${artHtml}${text}</div>${progress}${controls}
-      <div class="media-foot">${volHtml}${browse(false)}</div></div>`;
-    if (big) return `<div class="${cls}">${headHtml(deviceSm)}${artHtml}${text}${progress}${controls}
-      <div class="media-foot">${volHtml}${browse(false)}</div></div>`;
-    return `<div class="${cls}">${headHtml(device)}<div class="media-now">${artHtml}${text}</div>${progress}${controls}
-      <div class="media-foot">${volHtml}${browse(true)}</div></div>`;
+    };
+    return head(m.title || 'Serveur Proxmox', nodes.length > 1 ? plural(nodes.length, 'nœud', 'nœuds') : '') +
+      `<div class="pve-nodes" data-scroll="${m.id}">${nodes.map(one).join('')}</div>`;
+  }
+
+  function pveGuests(m, list, c) {
+    const pve = c.proxmox();
+    const filter = m.options.kind || '';
+    const guests = pve.guests.filter((g) => !filter || g.kind === filter)
+      .sort((a, b) => (b.running - a.running) || (Number(a.vmid) || 9999) - (Number(b.vmid) || 9999) || a.name.localeCompare(b.name, 'fr'));
+    if (!pve.nodes.length && !guests.length) return pveEmpty(m.title || 'VM et conteneurs');
+    const act = (g, cmd, ic, label) => g.buttons[cmd] ? `<button class="pve-act" data-act="pve-press" data-arg="${esc(g.buttons[cmd])}" data-label="${esc(label + ' ' + g.name)}" data-key="${m.id}:${cmd}:${esc(g.id)}" aria-label="${esc(label + ' ' + g.name)}" title="${esc(label)}">${icon(ic, 16, 2)}</button>` : '';
+    const acts = (g) => g.running ? act(g, 'reboot', IC.refresh, 'Redémarrer') + (act(g, 'shutdown', IC.power, 'Éteindre') || act(g, 'stop', IC.power, 'Arrêter')) : act(g, 'start', IC.play, 'Démarrer');
+    const mini = (g) => m.w > 1 && g.running ? `<span class="pve-mini">
+        <span title="Processeur">CPU <b>${g.cpu != null ? Math.round(g.cpu) + ' %' : '–'}</b><i><u style="width: ${clampPct(g.cpu) || 0}%"></u></i></span>
+        <span title="Mémoire">RAM <b>${g.mem != null ? Math.round(g.mem) + ' %' : '–'}</b><i><u style="width: ${clampPct(g.mem) || 0}%"></u></i></span></span>` : '';
+    const row = (g) => `<li class="pve-guest${g.running ? ' is-on' : ''}">
+      <span class="pve-gic">${icon(g.kind === 'lxc' ? IC.box : IC.tv, 18, 1.9)}</span>
+      <span class="pve-gmain"><span class="pve-gname">${g.vmid ? `<span class="muted">${esc(g.vmid)}</span> ` : ''}${esc(g.name)}</span>
+        <span class="muted small">${g.running ? 'En marche' + (g.uptime ? ' · ' + esc(g.uptime) : '') : 'Arrêtée'}</span></span>
+      ${mini(g)}
+      <span class="pve-acts">${acts(g)}</span>
+    </li>`;
+    const running = guests.filter((g) => g.running).length;
+    return head(m.title || (filter === 'lxc' ? 'Conteneurs' : filter === 'qemu' ? 'Machines virtuelles' : 'VM et conteneurs'), running + ' / ' + guests.length + ' en marche') +
+      `<ul class="pve-guests" data-scroll="${m.id}">${guests.map(row).join('') || '<li class="muted small">Aucune VM ni conteneur.</li>'}</ul>`;
   }
 
   // ---------- catalog ----------
@@ -701,7 +801,11 @@ window.HD = window.HD || {};
     media: { name: 'Spotify / musique', desc: 'Pochette, titre, commandes, volume, choix de l\'enceinte et playlists (Spotify via Home Assistant).', icon: IC.music, w: 2, h: 2, single: true,
       empty: 'Aucun lecteur multimédia. Ajoutez Spotify dans Home Assistant : Paramètres › Appareils et services › Ajouter une intégration › Spotify (compte Premium nécessaire pour piloter la lecture).',
       auto: isSpotify, pick: dom('media_player'), render: media },
-    rooms: { name: 'Pièces', desc: 'Résumé de chaque pièce ; un clic ouvre la pièce.', icon: IC.home, w: 4, h: 2, noEntities: true, render: rooms }
+    rooms: { name: 'Pièces', desc: 'Résumé de chaque pièce ; un clic ouvre la pièce.', icon: IC.home, w: 4, h: 2, noEntities: true, render: rooms },
+    updates: { name: 'Mises à jour', desc: 'Home Assistant, système, modules complémentaires, HACS, appareils : versions et installation.', icon: IC.download, w: 2, h: 4, allStates: true,
+      empty: 'Aucune entité de mise à jour trouvée dans Home Assistant.', pick: dom('update'), render: updates },
+    'pve-node': { name: 'Serveur Proxmox', desc: 'Processeur, mémoire, disque, réseau et durée de fonctionnement du serveur, en direct.', icon: IC.server, w: 2, h: 2, noEntities: true, render: pveNode },
+    'pve-guests': { name: 'VM et conteneurs', desc: 'Vos machines virtuelles et conteneurs Proxmox : état, charge, démarrer / éteindre.', icon: IC.box, w: 2, h: 4, noEntities: true, render: pveGuests }
   };
 
   // Large two-tone weather picture for the home screen (sun in yellow, cloud in white).
@@ -713,5 +817,5 @@ window.HD = window.HD || {};
     return svg(`<path stroke="#FFFFFF" d="${wxIcon(cond)}"></path>`);
   }
 
-  HD.Modules = { types: T, lightState, TONES, ACCENTS, ZONES, tempThresholds, tempZone, tempColorsOn, wxIcon, wxArt, dayLabel, dailyItems, whenLabel, dayTitle, transitDirections, calEvents, calBody, CAL_VIEWS, isTraffic, agendaEvents, departures, LINES, mediaPos, mmss, isSpotify };
+  HD.Modules = { types: T, lightState, TONES, ACCENTS, ZONES, tempThresholds, tempZone, tempColorsOn, wxIcon, wxArt, dayLabel, dailyItems, whenLabel, dayTitle, transitDirections, calEvents, calBody, CAL_VIEWS, isTraffic, agendaEvents, departures, LINES, mediaPos, mmss, isSpotify, updateInfo };
 })();

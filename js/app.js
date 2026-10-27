@@ -11,9 +11,11 @@
     { id: 'rooms', label: 'Pièces', icon: IC.grid },
     { id: 'auto', label: 'Automatisations', icon: IC.spark },
     { id: 'energy', label: 'Énergie', icon: IC.bolt },
+    { id: 'server', label: 'Serveur', icon: IC.server },
+    { id: 'updates', label: 'Mises à jour', icon: IC.download },
     { id: 'settings', label: 'Réglages', icon: IC.gear }
   ];
-  const PAGE_TITLES = { home: null, auto: 'Automatisations', energy: 'Énergie' };
+  const PAGE_TITLES = { home: null, auto: 'Automatisations', energy: 'Énergie', server: 'Serveur', updates: 'Mises à jour' };
 
   // ---------- persistence ----------
   const store = {
@@ -241,11 +243,19 @@
     const scrollers = {};
     $app.querySelectorAll('[data-scroll]').forEach((el) => { scrollers[el.dataset.scroll] = el.scrollTop; });
 
-    if (!app.index) $app.innerHTML = loginView();
-    else $app.innerHTML = shell(app.tab === 'settings' ? pageSettings() : pageModules()) + (app.modal ? modalView() : '');
+    // Updated in place (morph.js): only what changed is touched, so the page never flashes.
+    const view = !app.index ? 'login' : app.tab + ':' + (app.tab === 'settings' ? '' : pageKey() || '');
+    HD.morph($app, !app.index ? loginView() : shell(app.tab === 'settings' ? pageSettings() : pageModules()) + (app.modal ? modalView() : ''));
+    // New page: a short fade-in.
+    if (app.lastView && view !== app.lastView) {
+      const panel = $app.querySelector('.panel');
+      if (panel) { panel.classList.remove('page-in'); void panel.offsetWidth; panel.classList.add('page-in'); }
+    }
+    app.lastView = view;
 
     fitRows(); // before restoring scroll positions, which depend on row heights
-    $app.querySelectorAll('[data-scroll]').forEach((el) => { if (scrollers[el.dataset.scroll]) el.scrollTop = scrollers[el.dataset.scroll]; });
+    // A list keeps its position; one that now shows something else starts at the top.
+    $app.querySelectorAll('[data-scroll]').forEach((el) => { const v = scrollers[el.dataset.scroll] || 0; if (Math.abs(el.scrollTop - v) > 1) el.scrollTop = v; });
     updateFades();
     if (focusKey) {
       const el = $app.querySelector(`[data-key="${CSS.escape(focusKey)}"]`);
@@ -339,16 +349,30 @@
   }
 
   function shell(content) {
-    const status = app.status === 'reconnecting' ? '<div class="banner" role="status">Connexion perdue, reconnexion…</div>' : '';
+    // Connection lost: the page stays behind a blur, with a clear message in the middle.
+    const offline = app.status === 'reconnecting' || app.status === 'connecting';
+    const status = offline ? `<div class="conn-overlay" role="alertdialog" aria-modal="true" aria-labelledby="conn-t">
+      <div class="conn-card">
+        <span class="conn-spin" aria-hidden="true"></span>
+        <h2 id="conn-t">Connexion perdue</h2>
+        <p class="muted">${navigator.onLine === false ? 'Le Wi-Fi de cette tablette semble coupé.' : 'Home Assistant ne répond plus.'} Reconnexion automatique<span data-retry-in></span>.</p>
+        <button class="btn-solid" data-act="conn-retry" data-key="conn-retry">Réessayer maintenant</button>
+      </div></div>` : '';
     // Rail flush to the left; Réglages pushed to the bottom.
-    const btn = (t) => `<button class="rail-btn${t.id === app.tab ? ' is-on' : ''}" aria-label="${t.label}" title="${t.label}" ${t.id === app.tab ? 'aria-current="page"' : ''} data-act="tab" data-arg="${t.id}" data-key="tab:${t.id}">${icon(t.icon, 22)}</button>`;
+    const nUpd = updatesPending();
+    const btn = (t) => {
+      const badge = t.id === 'updates' && nUpd ? `<span class="rail-badge">${nUpd}</span>` : '';
+      const label = t.label + (badge ? ' (' + nUpd + ' disponibles)' : '');
+      return `<button class="rail-btn${t.id === app.tab ? ' is-on' : ''}" aria-label="${label}" title="${label}" ${t.id === app.tab ? 'aria-current="page"' : ''} data-act="tab" data-arg="${t.id}" data-key="tab:${t.id}">${icon(t.icon, 22)}${badge}</button>`;
+    };
     return `
-<nav class="rail" aria-label="Navigation principale">
+<nav class="rail" aria-label="Navigation principale"${offline ? ' inert' : ''}>
   ${TABS.filter((t) => t.id !== 'settings').map(btn).join('')}
   <span class="rail-spacer"></span>
   ${btn(TABS.find((t) => t.id === 'settings'))}
 </nav>
-<main class="panel${app.editing ? ' is-editing' : ''}">${status}${content}</main>
+<main class="panel${app.editing ? ' is-editing' : ''}"${offline ? ' inert' : ''}>${content}</main>
+${status}
 ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
   }
 
@@ -571,6 +595,137 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
 </header>`;
   }
 
+  // ---------- Proxmox VE: nodes, VMs, containers and storage read from Home Assistant ----------
+  // Works with the "Proxmox VE" integration (HACS): one HA device per node / VM / LXC / storage.
+  const PVE_RE = /proxmox|(^|[._ ])pve([._ ]|$)/i;
+  function fmtDur(sec) {
+    if (sec == null || !isFinite(sec) || sec < 0) return '';
+    const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), mn = Math.floor((sec % 3600) / 60);
+    return d ? d + ' j ' + h + ' h' : h ? h + ' h ' + mn + ' min' : mn + ' min';
+  }
+  function proxmox() {
+    const idx = app.index;
+    const empty = { nodes: [], guests: [], storage: [] };
+    if (!idx || !idx.reg) return empty;
+    const groups = new Map();
+    for (const st of app.states.values()) {
+      const r = idx.reg.get(st.entity_id) || {};
+      if (r.disabled_by || !['sensor', 'binary_sensor', 'button', 'switch'].includes(M.domainOf(st.entity_id))) continue;
+      const dev = r.device_id ? idx.devices.get(r.device_id) : null;
+      const hay = (r.platform || '') + ' ' + st.entity_id + ' ' + (dev ? (dev.manufacturer || '') + ' ' + (dev.model || '') : '');
+      if (!PVE_RE.test(hay)) continue;
+      const key = r.device_id || st.entity_id.split('.')[1].replace(/_(cpu|memory|mem|disk|status|uptime|network|net|start|stop|shutdown|reboot|restart|swap|health|state)(_.*)?$/, '');
+      if (!groups.has(key)) groups.set(key, { id: key, dev, ents: [] });
+      groups.get(key).ents.push(st);
+    }
+    const out = { nodes: [], guests: [], storage: [] };
+    for (const g of groups.values()) {
+      const rawName = g.dev ? g.dev.name_by_user || g.dev.name || '' : g.id.replace(/_/g, ' ');
+      const model = g.dev ? g.dev.model || '' : '';
+      const txt = (rawName + ' ' + model).toLowerCase();
+      const kind = /lxc|container|conteneur/.test(txt) ? 'lxc' : /qemu|virtual|\bvm\b|machine/.test(txt) ? 'qemu' : /storage|stockage/.test(txt) ? 'storage' : 'node';
+      const vm = rawName.match(/\((\d{2,})\)/) || rawName.match(/\b(\d{3,})\b/);
+      const name = rawName.replace(/^(node|nœud|vm|qemu|lxc|ct|storage|stockage)\s*:?\s*/i, '').replace(/\s*\(\d{2,}\)\s*/, ' ').replace(/^\d{3,}\s+/, '').trim() || rawName;
+      const hayOf = (s) => (s.entity_id + ' ' + ((idx.reg.get(s.entity_id) || {}).translation_key || '') + ' ' + (s.attributes.friendly_name || '')).toLowerCase();
+      const sensors = g.ents.filter((s) => M.domainOf(s.entity_id) === 'sensor');
+      const pct = (s) => s.attributes.unit_of_measurement === '%';
+      const find = (re, pred) => sensors.find((s) => re.test(hayOf(s)) && (!pred || pred(s)));
+      const num = (s) => { if (!s || !M.isAvail(s)) return null; const v = Number(s.state); return isFinite(v) ? v : null; };
+      const cpu = num(find(/cpu/, pct));
+      const memUsedS = find(/(mem|ram).*(used|utilis)|(used|utilis).*(mem|ram)/, (s) => !pct(s));
+      const memTotS = find(/(mem|ram).*(total|max)|(total|max).*(mem|ram)/, (s) => !pct(s));
+      let mem = num(find(/mem|ram/, (s) => pct(s) && !/swap|free|libre/.test(hayOf(s))));
+      const memUsed = num(memUsedS), memTotal = num(memTotS);
+      if (mem == null && memUsed != null && memTotal) mem = (memUsed / memTotal) * 100;
+      const disk = num(find(/disk|rootfs|storage|stockage|used/, (s) => pct(s) && !/swap|mem|ram|cpu/.test(hayOf(s))));
+      const upS = find(/uptime|durée|en ligne depuis/);
+      let uptime = '';
+      if (upS && M.isAvail(upS)) {
+        if (upS.attributes.device_class === 'timestamp') uptime = fmtDur((Date.now() - Date.parse(upS.state)) / 1000);
+        else {
+          const u = upS.attributes.unit_of_measurement || 's';
+          const mult = { s: 1, min: 60, h: 3600, d: 86400, j: 86400 }[u] || 1;
+          uptime = fmtDur(Number(upS.state) * mult);
+        }
+      }
+      const rate = (s) => (s && M.isAvail(s) ? M.fmtNum(Number(s.state), 1) + ' ' + (s.attributes.unit_of_measurement || '') : '');
+      const netIn = rate(find(/network_in|net_?in|in_rate|download|reçu|entrant/));
+      const netOut = rate(find(/network_out|net_?out|out_rate|upload|envoy|sortant/));
+      const statusS = g.ents.find((s) => M.domainOf(s.entity_id) === 'binary_sensor' && (/status|running|state|etat|état/.test(hayOf(s)) || s.attributes.device_class === 'running'))
+        || sensors.find((s) => /status|state|etat|état/.test(hayOf(s)) && !/%/.test(s.attributes.unit_of_measurement || ''));
+      let running;
+      if (statusS) running = statusS.state === 'on' || /running|online|en marche|started/i.test(statusS.state);
+      else running = cpu != null;
+      const buttons = {};
+      for (const s of g.ents) {
+        if (M.domainOf(s.entity_id) !== 'button') continue;
+        const h = hayOf(s);
+        if (/reboot|restart|redémarr/.test(h)) buttons.reboot = s.entity_id;
+        else if (/shutdown|éteindre|arrêt propre/.test(h)) buttons.shutdown = s.entity_id;
+        else if (/(^|[._ ])stop|arrêter/.test(h)) buttons.stop = s.entity_id;
+        else if (/(^|[._ ])start|démarr/.test(h)) buttons.start = s.entity_id;
+      }
+      const memUnit = (memTotS && memTotS.attributes.unit_of_measurement) || (memUsedS && memUsedS.attributes.unit_of_measurement) || '';
+      const item = { id: g.id, name, kind, vmid: vm ? vm[1] : '', cpu, mem, memUsed, memTotal, memUnit, disk, uptime, netIn, netOut, running, online: statusS ? running : true, buttons };
+      if (kind === 'storage') {
+        const p = disk != null ? disk : num(find(/./, pct));
+        out.storage.push({ name, pct: p, sub: memUsed != null && memTotal ? '' : '' });
+      } else if (kind === 'node') { if (cpu != null || mem != null || disk != null || statusS) out.nodes.push(item); }
+      else out.guests.push(item);
+    }
+    return out;
+  }
+
+  // ---------- Home Assistant updates ----------
+  const updatesPending = () => app.index ? [...app.states.values()].filter((s) => M.domainOf(s.entity_id) === 'update' && s.state === 'on').length : 0;
+
+  // Release notes are Markdown: titles, lists, bold, links — shown as simple text blocks.
+  function mdLite(md) {
+    const inline = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    const out = [];
+    let list = false;
+    for (const raw of String(md || '').split('\n')) {
+      const line = raw.trim();
+      const li = line.match(/^[-*]\s+(.*)$/);
+      if (li) { if (!list) { out.push('<ul>'); list = true; } out.push('<li>' + inline(li[1]) + '</li>'); continue; }
+      if (list) { out.push('</ul>'); list = false; }
+      if (!line) continue;
+      const h = line.match(/^#{1,6}\s+(.*)$/);
+      out.push(h ? '<h4>' + inline(h[1]) + '</h4>' : '<p>' + inline(line) + '</p>');
+    }
+    if (list) out.push('</ul>');
+    return out.join('');
+  }
+
+  function updateModal(md) {
+    const close = `<span class="grow"></span><button class="btn-solid" data-act="modal-close" data-key="modal-close">Fermer</button>`;
+    const st = app.states.get(md.entity);
+    if (!st) return modalFrame('Mise à jour', '<p class="muted">Entité introuvable.</p>', close);
+    const u = HD.Modules.updateInfo(st);
+    const seg = (act, value, opts) => `<div class="segmented inline" role="group">${opts.map(([v, label]) =>
+      `<button type="button" class="${value === v ? 'is-on' : ''}" aria-pressed="${value === v}" data-act="${act}" data-arg="${esc(v)}" data-key="${act}:${esc(v)}">${label}</button>`).join('')}</div>`;
+    if (u.notes && md.notes == null && !md.loading && app.conn && app.conn.releaseNotes) {
+      md.loading = true;
+      app.conn.releaseNotes(u.id).then((t) => { md.notes = t || ''; }, () => { md.notes = ''; }).then(() => { md.loading = false; if (app.modal === md) render(); });
+    }
+    const notes = md.notes ? `<div class="upd-notes">${mdLite(md.notes.slice(0, 20000))}</div>` : md.loading ? '<p class="muted small">Chargement des notes de version…</p>' : u.summary ? `<div class="upd-notes">${mdLite(u.summary)}</div>` : '';
+    const body = `
+      <div class="upd-vers">
+        <span><span class="muted small">Installée</span><b>${esc(u.installed)}</b></span>
+        ${u.pending || u.busy ? `<span class="upd-arrow">→</span><span><span class="muted small">Disponible</span><b>${esc(u.latest)}</b></span>` : `<span class="upd-uptodate">${icon(IC.check, 16, 2.4)} À jour</span>`}
+      </div>
+      ${u.busy ? `<div class="upd-prog lg"><i style="width: ${u.pct != null ? Math.max(4, u.pct) : 30}%"${u.pct == null ? ' class="indet"' : ''}></i></div><p class="muted small">Installation en cours${u.pct != null ? ' : ' + Math.round(u.pct) + ' %' : '…'} Home Assistant peut redémarrer à la fin.</p>` : ''}
+      ${u.pending && !u.busy && u.backup ? `<div class="field-row"><span class="field-label">Sauvegarde</span>${seg('upd-backup', md.backup === false ? '' : 'on', [['on', 'Avant d\'installer'], ['', 'Non']])}</div>` : ''}
+      ${notes}
+      ${u.url ? `<p><a class="link-btn" href="${esc(u.url)}" target="_blank" rel="noopener">Notes de version complètes</a></p>` : ''}`;
+    const foot = u.pending && !u.busy
+      ? `<button class="btn-glass" data-act="update-skip" data-arg="${esc(u.id)}" data-key="upd-skip">Ignorer cette version</button><span class="grow"></span>
+         <button class="btn-glass" data-act="modal-close" data-key="modal-close">Plus tard</button>
+         <button class="btn-solid" data-act="update-install" data-arg="${esc(u.id)}" data-key="upd-install" ${u.off ? 'disabled' : ''}>${icon(IC.download, 16, 2)} Installer</button>`
+      : close;
+    return modalFrame(u.name, body, foot);
+  }
+
   // ----- home screen (design « Dashboard Maison – tablette ») -----
   // Three columns filling the screen: weather | rooms + scenes | agenda + notes.
   const allStates = () => [...app.index.visible].map((id) => app.states.get(id)).filter(Boolean);
@@ -585,7 +740,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     'home-rooms': homeType('Pièces et lumières', 'Chaque pièce avec sa température et ses lampes à allumer d\'un toucher.', IC.home, 2, 3, (m) => heroRooms(m)),
     'home-scenes': homeType('Raccourcis', '« Tout éteindre » et vos trois premières scènes.', IC.spark, 2, 1, () => heroScenes()),
     'home-agenda': homeType('Agenda (accueil)', 'Les prochains jours de vos calendriers ; plusieurs affichages.', IC.calendar, 1, 2, (m) => heroAgenda(m)),
-    'home-notes': homeType('Liste de notes', 'Une liste à cocher partagée (courses, rappels…).', IC.note, 1, 2, () => heroNotes())
+    'home-notes': homeType('Liste de notes', 'Une liste à cocher partagée (courses, rappels…).', IC.note, 1, 2, (m) => heroNotes(m))
   });
 
   function heroWeather(m) {
@@ -634,7 +789,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     else if (wide) inner = `<span class="wx-cols"><span class="wx-col">${now}${chips}<span class="grow"></span>${sunLine}</span><span class="wx-col">${hoursHtml}${daysHtml}</span></span>`;
     else inner = `${now}${chips}${hoursHtml}${daysHtml}<span class="grow"></span>${sunLine}`;
     return `<div class="card hero-card hero-weather wx-h${h}${wide ? ' wx-wide' : ''}" role="button" tabindex="0" data-act="weather-open" data-arg="${esc(st.entity_id)}" data-key="hero:wx" aria-label="Météo, prévisions détaillées">
-      ${h === 1 ? '' : `<span class="mod-head"><span class="h2">Météo</span><span class="muted small">${esc(M.shortName(st))}</span></span>`}
+      ${h === 1 ? '' : `<span class="mod-head"><span class="h2">${esc((m && m.title) || 'Météo')}</span><span class="muted small">${esc(M.shortName(st))}</span></span>`}
       ${inner}
     </div>`;
   }
@@ -752,7 +907,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       list = `<p class="muted small">${!cals.length ? 'Aucun calendrier : connectez Google Agenda dans Home Assistant (« Calendrier distant » ou « Google Calendar »).' : data.loading ? 'Chargement…' : days === 1 ? "Rien de prévu aujourd'hui." : 'Rien de prévu sur ' + days + ' jours.'}</p>`;
     }
     return `<section class="card hero-card hero-agenda" aria-label="Agenda">
-      <div class="mod-head"><h2>Agenda</h2><span class="muted small">${days === 1 ? "Aujourd'hui" : days + ' jours'}</span></div>
+      <div class="mod-head"><h2>${esc((m && m.title) || 'Agenda')}</h2><span class="muted small">${days === 1 ? "Aujourd'hui" : days + ' jours'}</span></div>
       <div class="agenda-list" data-scroll="agenda:${esc(id)}">${list}</div>
     </section>`;
   }
@@ -778,13 +933,13 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     L.save();
   }
 
-  function heroNotes() {
+  function heroNotes(mod) {
     const items = memoItems();
     const m = memo();
     const when = m.updated ? M.relTime(new Date(m.updated).toISOString()) : null;
     const anyDone = items.some((it) => it.done);
     return `<section class="card hero-card hero-notes" aria-label="Notes">
-      <div class="mod-head"><h2>Notes</h2><span class="muted small">${anyDone ? '<button class="link-btn" data-act="memo-clear" data-key="memo-clear">Effacer les cochées</button>' : when ? esc(when) : ''}</span></div>
+      <div class="mod-head"><h2>${esc((mod && mod.title) || 'Notes')}</h2><span class="muted small">${anyDone ? '<button class="link-btn" data-act="memo-clear" data-key="memo-clear">Effacer les cochées</button>' : when ? esc(when) : ''}</span></div>
       <ul class="memo-list" data-scroll="hero-memo">${items.map((it, i) => `<li><label class="memo-item${it.done ? ' is-done' : ''}">
         <input type="checkbox" ${it.done ? 'checked' : ''} data-act="memo-check" data-arg="${i}" data-key="memo:${i}"><span>${esc(it.text)}</span></label></li>`).join('')}</ul>
       <form class="memo-form" id="memo-form"><label class="sr-only" for="memo-input">Nouvelle note</label>
@@ -808,6 +963,13 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       const sums = roomSummaries();
       return plural(sums.reduce((s, v) => s + v.active, 0), 'appareil actif', 'appareils actifs') + ' · ' + plural(sums.length, 'pièce', 'pièces');
     }
+    if (key === 'updates') { const n = updatesPending(); return n ? plural(n, 'mise à jour disponible', 'mises à jour disponibles') : 'Tout est à jour'; }
+    if (key === 'server') {
+      const pve = proxmox();
+      if (!pve.nodes.length) return 'Proxmox VE';
+      const n = pve.nodes[0];
+      return [n.name, n.cpu != null ? 'CPU ' + Math.round(n.cpu) + ' %' : '', pve.guests.length ? pve.guests.filter((g) => g.running).length + '/' + pve.guests.length + ' en marche' : ''].filter(Boolean).join(' · ');
+    }
     return plural(mods.length, 'module', 'modules');
   }
 
@@ -828,7 +990,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     const ctx = {
       states: app.states, index: app.index, global: !room, roomName: room ? room.name : null,
       targetTemp, roomSummaries, roomOrder, forecast: (st) => forecastFor(st, 'main'),
-      calendar: calendarFor, mediaUrl,
+      calendar: calendarFor, mediaUrl, proxmox: (() => { let v; return () => v || (v = proxmox()); })(),
       rememberEvents: (id, events) => { app.calEvents = app.calEvents || {}; app.calEvents[id] = events; }
     };
     const body = mods.map((m) => moduleView(m, ctx, e)).join('') +
@@ -848,7 +1010,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     let inner;
     if (!t.noEntities && !list.length) {
       // Nothing to show: say why; offer the picker only if HA has something compatible somewhere.
-      const anywhere = [...app.index.visible].some((id) => { const s = app.states.get(id); return s && t.pick(s); });
+      const anywhere = [...(t.allStates ? app.states.keys() : app.index.visible)].some((id) => { const s = app.states.get(id); return s && t.pick(s); });
       const msg = t.manual ? 'Aucun capteur choisi.' : anywhere ? 'Aucun appareil compatible ici.' : (t.empty || 'Aucun appareil compatible trouvé dans Home Assistant.');
       inner = HD.UI.head(m.title || t.name) + `<div class="mod-empty"><p class="muted small">${esc(msg)}</p>
         ${anywhere || t.manual ? `<button class="btn-glass sm" data-act="mod-config" data-key="${m.id}:cfg-empty">Choisir des appareils</button>` : ''}</div>`;
@@ -856,7 +1018,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       // A module set to "Toute la maison" on a room page behaves like a house-wide one.
       inner = t.render(m, list, m.scope === 'all' && !ctx.global ? { ...ctx, global: true } : ctx);
     }
-    const bare = t.bare && !m.title && (list.length || t.noEntities);
+    const bare = t.bare && (t.home || !m.title) && (list.length || t.noEntities);
     // Edit mode: the whole card is draggable (drop it on another one to swap them), its right edge,
     // bottom edge and corner stretch it on the 4-column grid. Arrow keys work on the grip and handles.
     const tools = app.editing ? `
@@ -1061,6 +1223,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     if (md.kind === 'event') return eventModal(md.ev);
     if (md.kind === 'media') return mediaModal(md);
     if (md.kind === 'bg') return bgModal();
+    if (md.kind === 'update') return updateModal(md);
     if (md.kind === 'add') {
       const e = env(pageRoom());
       const scope = pageRoom() ? 'room' : 'all';
@@ -1678,6 +1841,30 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       render();
     },
     'draft-rooms-all'() { delete app.modal.draft.options.rooms; render(); },
+    'update-open'(id) { app.modal = { kind: 'update', entity: id }; render(); },
+    'upd-backup'(arg) { if (app.modal) { app.modal.backup = arg === 'on'; render(); } },
+    'update-install'(id) {
+      const st = app.states.get(id);
+      const u = st && HD.Modules.updateInfo(st);
+      if (!u) return;
+      call('update', 'install', id, u.backup && app.modal && app.modal.backup !== false ? { backup: true } : {});
+      app.modal = null;
+      showToast('Installation de ' + u.name + ' ' + u.latest + ' lancée.');
+    },
+    'update-skip'(id) {
+      const st = app.states.get(id);
+      if (!st || !confirm('Ignorer la version ' + (st.attributes.latest_version || '') + ' ? Elle ne sera plus proposée.')) return;
+      call('update', 'skip', id);
+      app.modal = null;
+      render();
+    },
+    'pve-press'(id, el) {
+      const label = (el && el.dataset.label) || 'Confirmer';
+      if (!confirm(label + ' ?')) return;
+      call('button', 'press', id);
+      showToast(label + ' : demandé à Proxmox.');
+    },
+    'conn-retry'() { if (app.conn && app.conn.retryNow) app.conn.retryNow(); else location.reload(); },
     'all-off'() { call('light', 'turn_off', 'all'); },
     'memo-clear'() { saveMemo(memoItems().filter((it) => !it.done)); render(); },
     export() { download('maison-disposition.json', L.exportJson()); },
@@ -1756,8 +1943,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       if (num) num.textContent = e.target.value + ' %';
     } else if (act === 'media-vol') {
       app.dragging = true;
-      const fill = e.target.closest('[data-mod]').querySelector('[data-vol-fill]');
-      if (fill) fill.style.width = e.target.value + '%';
+      e.target.style.setProperty('--v', e.target.value + '%');
     } else if (act === 'memo-draft') {
       app.memoDraft = e.target.value;
     } else if (act === 'note') {
@@ -2107,6 +2293,11 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     const now = new Date();
     $app.querySelectorAll('[data-clock]').forEach((el) => { const v = fmtClock(now, el.dataset.clock); if (el.textContent !== v) el.textContent = v; });
     $app.querySelectorAll('[data-date]').forEach((el) => { const v = fmtDate(now, el.dataset.date); if (el.textContent !== v) el.textContent = v; });
+    $app.querySelectorAll('[data-retry-in]').forEach((el) => {
+      const left = app.conn && app.conn.nextTry ? Math.ceil((app.conn.nextTry - Date.now()) / 1000) : 0;
+      const v = left > 0 ? ' dans ' + left + ' s' : ' en cours…';
+      if (el.textContent !== v) el.textContent = v;
+    });
     $app.querySelectorAll('[data-media-pos]').forEach((el) => {
       if (el.dataset.playing !== '1') return;
       const dur = Number(el.dataset.dur);
@@ -2123,6 +2314,11 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     if (app.index && !app.modal) queueRender();
     setInterval(() => { if (app.index && !app.modal) queueRender(); }, 60000);
   }, 60000 - (Date.now() % 60000) + 50);
+
+  // Network back or screen woken up: reconnect now instead of waiting for the next attempt.
+  const retrySoon = () => { if (app.conn && app.conn.retryNow && app.status === 'reconnecting') app.conn.retryNow(); };
+  window.addEventListener('online', retrySoon);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) retrySoon(); });
 
   document.documentElement.style.setProperty('--accent', L.data.accent);
   connectSaved();
