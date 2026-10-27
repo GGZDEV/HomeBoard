@@ -310,8 +310,8 @@ window.HD = window.HD || {};
       more = `<span class="fc-row" style="grid-template-columns: repeat(${n}, minmax(0, 1fr))">${days.slice(0, n).map((f, i) => `
         <span class="fc-day"><span class="muted small">${esc(dayLabel(f.datetime, i))}</span>${icon(wxIcon(f.condition), 22, 1.7)}
         <span class="fc-hi">${esc(M.fmtNum(f.temperature, 0))}°</span><span class="muted small">${f.templow != null ? esc(M.fmtNum(f.templow, 0)) + '°' : ''}</span></span>`).join('')}</span>`;
-    } else if (days.length && m.h >= 3) {
-      more = `<span class="fc-list">${days.slice(1, m.h === 3 ? 4 : 6).map((f, i) => `
+    } else if (days.length && m.h >= 2) {
+      more = `<span class="fc-list">${days.slice(1, m.h === 2 ? 3 : m.h === 3 ? 4 : 6).map((f, i) => `
         <span class="fc-line"><span class="fc-name">${esc(dayLabel(f.datetime, i + 1))}</span>${icon(wxIcon(f.condition), 18, 1.7)}
         <span class="muted small">${f.templow != null ? esc(M.fmtNum(f.templow, 0)) + '°' : ''}</span><span class="fc-hi">${esc(M.fmtNum(f.temperature, 0))}°</span></span>`).join('')}</span>`;
     }
@@ -637,32 +637,39 @@ window.HD = window.HD || {};
     const what = off ? 'Indisponible' : active ? (a.media_title || 'Lecture en cours')
       : srcs.length && !a.source ? 'Choisissez un appareil' : 'Rien en lecture';
     const who = active ? [a.media_artist, a.media_album_name].filter(Boolean).join(' · ') : (spotify ? 'Lancez une playlist ou reprenez la lecture' : '');
-    const compact = m.h === 1;
+    // One layout per size: 1 row = a bar, 1 column = stacked, otherwise the full player.
+    const bar = m.h === 1;
+    const tiny = bar && m.w === 1;
+    const narrow = m.w === 1 && !bar;
+    const big = narrow && m.h >= 3;
     const controls = `<div class="media-ctrls">
-        ${compact ? '' : btn('shuffle', IC.shuffle, a.shuffle ? 'Lecture aléatoire activée' : 'Lecture aléatoire', a.shuffle ? ' is-on' : '')}
-        ${btn('prev', IC.prev, 'Précédent')}
+        ${bar || (narrow && !big) ? '' : btn('shuffle', IC.shuffle, a.shuffle ? 'Lecture aléatoire activée' : 'Lecture aléatoire', a.shuffle ? ' is-on' : '')}
+        ${tiny ? '' : btn('prev', IC.prev, 'Précédent')}
         ${btn('play_pause', playing ? IC.pause : IC.play, playing ? 'Pause' : 'Lecture', ' is-main')}
         ${btn('next', IC.next, 'Suivant')}
-        ${compact ? '' : btn('repeat', IC.repeat, repeat === 'one' ? 'Répéter le titre' : repeat === 'all' ? 'Répéter tout' : 'Répéter', repeat !== 'off' ? ' is-on' + (repeat === 'one' ? ' is-one' : '') : '')}
+        ${bar || (narrow && !big) ? '' : btn('repeat', IC.repeat, repeat === 'one' ? 'Répéter le titre' : repeat === 'all' ? 'Répéter tout' : 'Répéter', repeat !== 'off' ? ' is-on' + (repeat === 'one' ? ' is-one' : '') : '')}
       </div>`;
     const vol = a.volume_level != null ? Math.round(Number(a.volume_level) * 100) : null;
-    return `
-    <div class="mod-head"><h2>${spotify ? `<span class="spotify-dot"></span>` : ''}${esc(title)}</h2>${device}</div>
-    <div class="media-now">
-      <div class="media-art">${art ? `<img src="${esc(art)}" alt="" loading="lazy">` : icon(IC.music, 30, 1.8)}</div>
-      <div class="stack media-text"><span class="media-title">${esc(what)}</span>${who ? `<span class="muted small media-who">${esc(who)}</span>` : ''}</div>
-      ${compact ? controls : ''}
-    </div>
-    ${compact ? '' : `
-    ${dur ? `<div class="media-progress" data-media-pos data-pos="${pos}" data-at="${Date.now()}" data-dur="${dur}" data-playing="${playing ? 1 : 0}">
+    const artHtml = `<div class="media-art">${art ? `<img src="${esc(art)}" alt="" loading="lazy">` : icon(IC.music, tiny ? 22 : 30, 1.8)}</div>`;
+    const text = `<div class="stack media-text"><span class="media-title">${esc(what)}</span>${who ? `<span class="muted small media-who">${esc(who)}</span>` : ''}</div>`;
+    const progress = dur ? `<div class="media-progress" data-media-pos data-pos="${pos}" data-at="${Date.now()}" data-dur="${dur}" data-playing="${playing ? 1 : 0}">
       <span class="mp-bar"><i style="width: ${Math.min(100, (pos / dur) * 100).toFixed(2)}%"></i></span>
-      <span class="mp-times muted small"><span data-cur>${mmss(pos)}</span><span>${mmss(dur)}</span></span></div>` : ''}
-    ${controls}
-    <div class="media-foot">
-      ${vol != null ? `<label class="slider media-vol">${icon(IC.volume, 16, 2)}<span class="slider-fill" data-vol-fill style="width: ${vol}%"></span>
-        <input class="range" type="range" min="0" max="100" value="${vol}" data-act="media-vol" data-key="${k('vol')}" aria-label="Volume" ${off ? 'disabled' : ''}></label>` : '<span class="grow"></span>'}
-      <button class="btn-glass sm" data-act="media-browse" data-arg="${esc(st.entity_id)}" data-key="${k('browse')}" ${off ? 'disabled' : ''}>${icon(IC.list, 16, 2)} ${spotify ? 'Playlists' : 'Bibliothèque'}</button>
-    </div>`}`;
+      ${narrow && !big ? '' : `<span class="mp-times muted small"><span data-cur>${mmss(pos)}</span><span>${mmss(dur)}</span></span>`}</div>` : '';
+    const browse = (label) => `<button class="btn-glass sm${label ? '' : ' icon-only'}" data-act="media-browse" data-arg="${esc(st.entity_id)}" data-key="${k('browse')}" ${off ? 'disabled' : ''} aria-label="${spotify ? 'Playlists' : 'Bibliothèque'}" title="${spotify ? 'Playlists' : 'Bibliothèque'}">${icon(IC.list, 16, 2)}${label ? ' ' + (spotify ? 'Playlists' : 'Bibliothèque') : ''}</button>`;
+    const volHtml = vol != null ? `<label class="slider media-vol">${icon(IC.volume, 16, 2)}<span class="slider-fill" data-vol-fill style="width: ${vol}%"></span>
+        <input class="range" type="range" min="0" max="100" value="${vol}" data-act="media-vol" data-key="${k('vol')}" aria-label="Volume" ${off ? 'disabled' : ''}></label>` : '<span class="grow"></span>';
+    // Narrow sizes: the speaker picker is just an icon (the select sits invisibly on top of it).
+    const deviceSm = srcs.length ? device.replace('class="media-src"', 'class="media-src icon-only"') : '';
+    const headHtml = (dev) => `<div class="mod-head"><h2>${spotify ? `<span class="spotify-dot"></span>` : ''}${esc(title)}</h2>${dev}</div>`;
+    const cls = `media-layout ${tiny ? 'ml-tiny' : bar ? 'ml-bar' : big ? 'ml-big' : narrow ? 'ml-narrow' : 'ml-full'}`;
+    if (tiny) return `<div class="${cls}"><div class="media-now">${artHtml}${text}</div>${controls}</div>`;
+    if (bar) return `<div class="${cls}"><div class="media-now">${artHtml}${text}${controls}${m.w >= 3 ? deviceSm.replace(' icon-only', '') : deviceSm}</div></div>`;
+    if (narrow && !big) return `<div class="${cls}">${headHtml(deviceSm)}<div class="media-now">${artHtml}${text}</div>${progress}${controls}
+      <div class="media-foot">${volHtml}${browse(false)}</div></div>`;
+    if (big) return `<div class="${cls}">${headHtml(deviceSm)}${artHtml}${text}${progress}${controls}
+      <div class="media-foot">${volHtml}${browse(false)}</div></div>`;
+    return `<div class="${cls}">${headHtml(device)}<div class="media-now">${artHtml}${text}</div>${progress}${controls}
+      <div class="media-foot">${volHtml}${browse(true)}</div></div>`;
   }
 
   // ---------- catalog ----------
