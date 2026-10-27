@@ -929,8 +929,8 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     app.calEvents = app.calEvents || {};
     app.calEvents[id] = events;
     const title = esc((m && m.title) || 'Agenda');
-    // Default: the design's "Jours" view; the other views stay available in ⚙.
-    if (!o.view || o.view === 'jours') {
+    // Default: the design's "Jours" view; the other views stay available in ⚙ (an empty week always shows the days).
+    if (!o.view || o.view === 'jours' || (!events.length && !data.loading)) {
       if (!cals.length) {
         return `<section class="card hero-card hero-agenda" aria-label="Agenda"><div class="mod-head"><h2>${title}</h2></div>
           <div class="mod-empty"><span class="empty-ic">${icon(IC.calendar, 22, 1.8)}</span><p class="muted small">Aucun calendrier : connectez Google Agenda dans Home Assistant (« Calendrier distant » ou « Google Calendar »).</p></div></section>`;

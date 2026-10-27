@@ -502,7 +502,7 @@ window.HD = window.HD || {};
     const data = c.calendar(list, days);
     const events = agendaEvents(calEvents(list, data.raw).filter((ev) => ev.end > new Date()), m.options);
     c.rememberEvents(m.id, events);
-    if (m.options.view === 'jours') {
+    if (m.options.view === 'jours' || (!events.length && !data.loading && !data.error)) {
       const r = calDays(events, { id: m.id, w: m.w, h: m.h, days, loading: data.loading && !events.length });
       return head(m.title || 'Agenda', r.meta) + r.html;
     }

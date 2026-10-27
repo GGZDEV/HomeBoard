@@ -812,7 +812,7 @@ span.h2 { font-size: 15px; font-weight: 600; }
 
 /* Short cards (small tablets): tighter spacing so the forecast still fits. */
 /* (Not on phones: there cards take their natural height, which size containment would hide.) */
-@media (min-width: 861px) and (min-height: 621px) { .hero-weather { container-type: size; } }
+@media (min-width: 861px) and (min-height: 621px) { .hero-weather, .hero-rooms.roomsv-big { container-type: size; } }
 @container (max-height: 300px) {
   .wh-center { flex-direction: row; flex-wrap: wrap; justify-content: center; column-gap: 10px; }
   .wh-center .wh-now svg { width: 36px; height: 36px; }
@@ -859,6 +859,19 @@ span.h2 { font-size: 15px; font-weight: 600; }
 .rooms-more b { font-size: 18px; font-weight: 600; }
 .rooms-count { flex: 1; display: flex; align-items: center; gap: 12px; font-size: 14px; line-height: 1.3; font-weight: 500; }
 .rc-n { font-size: 48px; line-height: 1; font-weight: 600; letter-spacing: -0.03em; color: var(--accent); font-variant-numeric: tabular-nums; }
+
+/* Short room grids (tablets): each room on one line — name, temperature, bulb — as on the 16:9 design. */
+@container (max-height: 410px) {
+  .rooms-grid { grid-auto-rows: minmax(58px, 1fr); gap: 10px; }
+  .rooms-grid .rt { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; column-gap: 10px; padding: 6px 8px 6px 14px; }
+  .rooms-grid .rt-top { display: contents; }
+  .rooms-grid .rt-open { order: 1; gap: 2px; }
+  .rooms-grid .rt-name { font-size: 15px; }
+  .rooms-grid .rt-bottom { order: 2; flex-direction: column; align-items: flex-end; gap: 2px; }
+  .rooms-grid .rt-temp { font-size: 18px; }
+  .rooms-grid .bulb { order: 3; }
+  .rooms-grid .rt-off { border-radius: 14px; }
+}
 
 /* ----- Agenda ----- */
 .hero-agenda { flex: 1; }
@@ -996,6 +1009,7 @@ button.ag-cell:hover { background: rgba(255, 255, 255, 0.08); }
 .media-progress.is-bare .mp-bar i::after { display: none; }
 .mp-times { display: flex; justify-content: space-between; font-size: 12px; color: var(--fg-muted); font-variant-numeric: tabular-nums; }
 .mp-time { flex: none; font-size: 12px; color: var(--fg-muted); font-variant-numeric: tabular-nums; }
+.t-media .mod-head h2 { flex-shrink: 0; max-width: 100%; }
 .media-dev { position: relative; display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 55%; flex: 0 100 auto; font-size: 13px; color: var(--fg-muted); white-space: nowrap; cursor: pointer; }
 .media-dev span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .media-dev svg { flex: none; }
