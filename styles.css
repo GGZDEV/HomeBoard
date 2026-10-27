@@ -826,6 +826,24 @@ span.h2 { font-size: 15px; font-weight: 600; }
   .wh-day { min-height: 24px; }
   .hero-weather.wxv-narrow, .hero-weather.wxv-big { gap: 14px; }
 }
+/* Same tightening when the app measures the forecast running past the card (big system font, odd screens). */
+.hero-weather.is-tight .wh-center { flex-direction: row; flex-wrap: nowrap; justify-content: center; column-gap: 10px; }
+.hero-weather.is-tight .wh-center .wh-now svg, .hero-weather.is-tight .wh-big-now svg:first-child { width: 34px; height: 34px; }
+.hero-weather.is-tight .wh-temp { font-size: 34px !important; }
+.hero-weather.is-tight .wh-center > .muted { display: none; }
+.hero-weather.is-tight .wh-hours.is-boxed { padding: 6px; border-radius: 14px; }
+.hero-weather.is-tight .wh-hr { gap: 2px; }
+.hero-weather.is-tight .wh-hr .muted { font-size: 11px; }
+.hero-weather.is-tight .wh-hr b { font-size: 14px; }
+.hero-weather.is-tight .wh-hr svg { width: 18px; height: 18px; }
+.hero-weather.is-tight .wh-day { min-height: 22px; }
+.hero-weather.is-tight.wxv-narrow, .hero-weather.is-tight.wxv-big { gap: 12px; }
+/* Still too tall: no condition text (the icon says it), smaller hour icons. */
+.hero-weather.is-tighter .wh-cond { display: none; }
+.hero-weather.is-tighter .wh-hours.is-boxed { padding: 4px 6px; }
+.hero-weather.is-tighter .wh-hr svg { width: 16px; height: 16px; }
+.hero-weather.is-tighter .wh-day { min-height: 20px; }
+.hero-weather.is-tighter.wxv-narrow, .hero-weather.is-tighter.wxv-big { gap: 10px; }
 /* ----- Pièces ----- */
 .hero-rooms { flex: 1; }
 .rt { min-width: 0; min-height: 0; display: flex; flex-direction: column; justify-content: space-between; gap: 6px; padding: 14px 14px 14px 16px; border-radius: 16px;

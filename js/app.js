@@ -275,7 +275,19 @@
     el.classList.toggle('fade-b', more && el.scrollTop + el.clientHeight < el.scrollHeight - 4);
     el.classList.toggle('fade-t', more && el.scrollTop > 4);
   }
-  function updateFades() { $app.querySelectorAll('[data-scroll]').forEach(fade); }
+  function updateFades() { $app.querySelectorAll('[data-scroll]').forEach(fade); fitWeather(); }
+  // Weather cards: when the forecast runs past the bottom (short card, big system font), tighten the top part, then tighten more.
+  function fitWeather() {
+    $app.querySelectorAll('.hero-weather').forEach((card) => {
+      const days = card.querySelectorAll('.wh-day');
+      card.classList.remove('is-tight', 'is-tighter');
+      if (!days.length || stacked()) return;
+      const last = days[days.length - 1];
+      const over = () => last.getBoundingClientRect().bottom > card.getBoundingClientRect().bottom - (parseFloat(getComputedStyle(card).paddingBottom) || 0) + 1;
+      if (over()) { card.classList.add('is-tight'); if (over()) card.classList.add('is-tighter'); }
+    });
+  }
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => fitWeather());
   $app.addEventListener('scroll', (e) => { if (e.target.dataset && e.target.dataset.scroll) fade(e.target); }, true);
   // Size grid rows from the space really available, so 4 rows = exactly the visible height:
   // a height-4 module is never cut off, whatever the screen. Stacked (phone) layout: natural heights.
