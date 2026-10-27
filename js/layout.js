@@ -60,6 +60,7 @@ window.HD = window.HD || {};
       if (d.memo && typeof d.memo.text === 'string') {
         out.memo = { text: d.memo.text.slice(0, 20000), updated: Number(d.memo.updated) || 0,
           history: Array.isArray(d.memo.history) ? d.memo.history.filter((t) => typeof t === 'string' && t.trim()).map((t) => t.slice(0, 200)).slice(0, 20) : [] };
+        if (typeof d.memo.list === 'string' && d.memo.list) out.memo.list = d.memo.list.slice(0, 120);
       }
       if (typeof d.outdoor === 'string') out.outdoor = d.outdoor;
       if (d.names && typeof d.names === 'object') {

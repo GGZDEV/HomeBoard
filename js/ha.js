@@ -170,6 +170,15 @@ HD.HAConnection = class HAConnection {
     return this.send({ type: 'weather/subscribe_forecast', entity_id: entityId, forecast_type: forecastType }, { onEvent });
   }
 
+  // To-do list items (Bring!, shopping list…): HA pushes the whole list again on every change (HA 2024.1+).
+  subscribeTodo(entityId, onItems) {
+    return this.send({ type: 'todo/item/subscribe', entity_id: entityId }, { onEvent: (ev) => onItems((ev && ev.items) || []) });
+  }
+  // One read of the list (older HA without the subscription).
+  listTodo(entityId) {
+    return this.send({ type: 'todo/item/list', entity_id: entityId }).then((r) => (r && r.items) || []);
+  }
+
   // Calendar events between two dates (REST: /api/calendars/<entity>?start=&end=).
   // Works when the page is served by HA (same origin); elsewhere HA's CORS settings decide.
   fetchCalendarEvents(entityId, start, end) {

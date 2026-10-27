@@ -89,6 +89,7 @@ HD.DemoConnection = class DemoConnection {
       S('calendar.famille', 'off', { friendly_name: 'Famille', message: 'Piscine Léa' }),
       S('calendar.travail', 'off', { friendly_name: 'Travail', message: 'Point équipe' }),
       S('calendar.info_trafic', 'on', { friendly_name: 'Info trafic', message: 'RER D : travaux' }),
+      Object.assign(S('todo.courses', '3', { friendly_name: 'Courses', supported_features: 15 }), { platform: 'bring' }),
       S('automation.lever_stores', 'on', { friendly_name: 'Ouvrir les stores au lever du soleil', last_triggered: ago(9) }),
       S('automation.extinction', 'on', { friendly_name: 'Tout éteindre à minuit', last_triggered: ago(15) }),
       S('automation.alerte_fuite', 'off', { friendly_name: 'Alerte fuite d\'eau', last_triggered: null }),
@@ -155,6 +156,11 @@ HD.DemoConnection = class DemoConnection {
       this.states.set(st.entity_id, st);
       this.entities.push({ entity_id: st.entity_id, area_id: area || null, device_id: device || null, platform: platform || 'demo', entity_category: cat || null });
     }
+    // Shared Bring! list: 3 items to buy, bought ones in "recently".
+    const T = (summary, status) => ({ uid: 'b-' + summary, summary, status });
+    this.todo = { 'todo.courses': [T('Lait', 'needs_action'), T('Pain de mie', 'needs_action'), T('Tomates', 'needs_action'),
+      T('Beurre', 'completed'), T('Œufs', 'completed'), T('Pâtes', 'completed'), T('Café', 'completed'), T('Yaourts', 'completed')] };
+    this.todoSubs = {};
     // RER D at Le Mée, in the SIRI Lite shape PRIM returns; regenerated every 2 min like the HA sensor.
     const rer = () => {
       const t0 = Date.now();
@@ -224,6 +230,7 @@ HD.DemoConnection = class DemoConnection {
       if (!st) continue;
       const d = id.split('.')[0];
       if (d === 'update') { this.update(id, st, service); continue; }
+      if (d === 'todo') { this.todoService(id, service, data); continue; }
       if (d === 'button') { this.pvePress(id); continue; }
       const isOn = !['off', 'closed', 'unlocked', 'standby'].includes(st.state);
       if (service === 'toggle') {
@@ -315,6 +322,24 @@ HD.DemoConnection = class DemoConnection {
       : id === 'current_user_playlists' ? { title: 'Playlists', children: DEMO_PLAYLISTS }
       : { title: 'Titres likés', children: DEMO_TRACKS.map((t, i) => ({ title: t.media_title + ' · ' + t.media_artist, media_content_id: 'spotify:track:demo' + i, media_content_type: 'track', can_play: true, can_expand: false, thumbnail: t.entity_picture })) };
     return new Promise((resolve) => setTimeout(() => resolve(JSON.parse(JSON.stringify(node))), 150));
+  }
+
+  // To-do lists: like HA, every change pushes the whole list to the subscribers.
+  subscribeTodo(id, onItems) {
+    (this.todoSubs[id] = this.todoSubs[id] || []).push(onItems);
+    setTimeout(() => onItems(JSON.parse(JSON.stringify(this.todo[id] || []))), 150);
+    return Promise.resolve();
+  }
+  listTodo(id) { return Promise.resolve(JSON.parse(JSON.stringify(this.todo[id] || []))); }
+  todoService(id, service, data) {
+    const list = this.todo[id] || (this.todo[id] = []);
+    const find = (k) => list.find((x) => x.uid === k || x.summary === k);
+    if (service === 'add_item') list.unshift({ uid: 'b-' + data.item + Date.now(), summary: data.item, status: 'needs_action' });
+    else if (service === 'update_item') { const it = find(data.item); if (it && data.status) it.status = data.status; if (it && data.rename) it.summary = data.rename; }
+    else if (service === 'remove_item') [].concat(data.item).forEach((k) => { const it = find(k); if (it) list.splice(list.indexOf(it), 1); });
+    else if (service === 'remove_completed_items') this.todo[id] = list.filter((x) => x.status !== 'completed');
+    this.set(id, String(this.todo[id].filter((x) => x.status !== 'completed').length));
+    setTimeout(() => (this.todoSubs[id] || []).forEach((fn) => fn(JSON.parse(JSON.stringify(this.todo[id])))), 300);
   }
 
   // A family calendar and a work calendar over the next days.

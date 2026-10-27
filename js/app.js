@@ -67,17 +67,18 @@
     app.conn = conn;
     app.status = 'connecting';
     app.error = null;
-    app.cal = {}; app.calEvents = {}; app.forecasts = {}; // data from the previous connection
+    app.cal = {}; app.calEvents = {}; app.forecasts = {}; app.todos = {}; // data from the previous connection
     L.init(conn, demo);
     conn.on('status', (s) => { if (app.conn === conn) { app.status = s === 'connected' && !app.index ? 'connecting' : s; queueRender(); } });
     // Subscriptions die with the socket: forget forecasts so they are re-requested.
-    conn.on('ready', () => { if (app.conn === conn) { app.forecasts = {}; loadAll(); } });
+    conn.on('ready', () => { if (app.conn === conn) { app.forecasts = {}; app.todos = {}; loadAll(); } });
     conn.on('state', (ev) => {
       if (app.conn !== conn || !ev) return;
       if (ev.new_state) app.states.set(ev.entity_id, ev.new_state);
       else app.states.delete(ev.entity_id);
       if (app.index && ev.new_state) M.addEntity(app.index, ev.entity_id);
       if (M.domainOf(ev.entity_id) === 'calendar') app.calStamp = (app.calStamp || 0) + 1; // re-read events
+      if (M.domainOf(ev.entity_id) === 'todo') todoChanged(ev.entity_id);
       queueRender();
     });
     render();
@@ -991,14 +992,100 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     }
     return L.data.memo;
   }
+  // ----- Courses linked to a Home Assistant to-do list (Bring!, Liste de courses…) -----
+  // memo().list: a todo entity, 'local' (the list kept by the dashboard) or unset = the Bring! list when there is one.
+  const todoIds = () => (app.states ? [...app.states.keys()] : []).filter((id) => id.startsWith('todo.')).sort();
+  function isBring(id) {
+    const r = app.index && app.index.reg ? app.index.reg.get(id) : null;
+    return (r && r.platform === 'bring') || /bring/i.test(id);
+  }
+  function memoList() {
+    const want = memo().list;
+    if (want === 'local') return null;
+    return want || todoIds().find(isBring) || null;
+  }
+  // Items of a to-do list, subscribed on first use: HA pushes every change (a phone adding an item too).
+  function todoSlot(id) {
+    app.todos = app.todos || {};
+    if (!app.todos[id] && app.conn && app.conn.subscribeTodo) {
+      const slot = app.todos[id] = { items: null, error: null };
+      const conn = app.conn;
+      const got = (items) => { if (app.conn !== conn) return; slot.items = items; slot.error = null; queueRender(); };
+      conn.subscribeTodo(id, got).catch(() => {
+        // Older HA: read the list now, then again each time the entity changes (todoChanged).
+        slot.once = true;
+        return conn.listTodo(id).then(got);
+      }).catch((e) => { slot.error = (e && e.message) || 'Liste introuvable'; queueRender(); });
+    }
+    return app.todos[id] || { items: null };
+  }
+  function todoChanged(id) {
+    const slot = app.todos && app.todos[id];
+    if (!slot) return;
+    if (slot.error) delete app.todos[id]; // the list (re)appeared: subscribe again
+    else if (slot.once && app.conn.listTodo) app.conn.listTodo(id).then((items) => { slot.items = items; queueRender(); }, () => {});
+  }
+  // Bring! moves a bought item to "recently": the list shows the items to buy, plus those checked here until cleared.
+  function todoItems(id) {
+    const items = todoSlot(id).items || [];
+    const just = app.todoJustDone || (app.todoJustDone = new Set());
+    return items.filter((it) => it.summary && (it.status !== 'completed' || just.has(it.uid)))
+      .map((it) => ({ done: it.status === 'completed', text: it.summary, uid: it.uid }));
+  }
+  // Optimistic change of the pushed list, so a tap shows at once (HA sends the real list right after).
+  function todoPatch(id, fn) { const slot = app.todos && app.todos[id]; if (slot && slot.items) slot.items = fn(slot.items.slice()); }
+  function memoSetDone(i, done) {
+    const id = memoList();
+    const items = memoItems();
+    const it = items[i];
+    if (!it) return;
+    if (id) {
+      if (done) app.todoJustDone.add(it.uid); else app.todoJustDone.delete(it.uid);
+      todoPatch(id, (list) => list.map((x) => (x.uid === it.uid ? { ...x, status: done ? 'completed' : 'needs_action' } : x)));
+      call('todo', 'update_item', id, { item: it.uid, status: done ? 'completed' : 'needs_action' });
+    } else { it.done = done; saveMemo(items); }
+  }
+  function memoAdd(text) {
+    text = String(text || '').trim();
+    if (!text) return;
+    const id = memoList();
+    if (!id) { saveMemo(memoItems().concat({ done: false, text })); return; }
+    const all = todoSlot(id).items || [];
+    const same = all.find((x) => (x.summary || '').trim().toLowerCase() === text.toLowerCase());
+    if (same && same.status !== 'completed') return; // already on the list
+    if (same) { // bought before (Bring! "recently"): put it back on the list
+      todoPatch(id, (list) => list.map((x) => (x.uid === same.uid ? { ...x, status: 'needs_action' } : x)));
+      call('todo', 'update_item', id, { item: same.uid, status: 'needs_action' });
+    } else {
+      todoPatch(id, (list) => list.concat({ uid: 'new:' + Date.now(), summary: text, status: 'needs_action' }));
+      call('todo', 'add_item', id, { item: text });
+    }
+  }
+  function memoClear() {
+    const id = memoList();
+    const items = memoItems();
+    rememberBought(items.filter((it) => it.done).map((it) => it.text));
+    if (id) { app.todoJustDone.clear(); L.save(); } else saveMemo(items.filter((it) => !it.done));
+  }
+  // "Souvent achetés": the list's own bought items (Bring! "recently") first, then those cleared here.
+  function memoSuggestions() {
+    const id = memoList();
+    const just = app.todoJustDone || new Set();
+    const fromList = id ? (todoSlot(id).items || []).filter((x) => x.status === 'completed' && x.summary && !just.has(x.uid)).map((x) => x.summary) : [];
+    const seen = new Set();
+    return fromList.concat(memo().history || []).filter((t) => { const k = t.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
+  }
+
   function memoItems() {
+    const id = memoList();
+    if (id) return todoItems(id);
     return memo().text.split('\n').map((l) => l.trim()).filter(Boolean).map((l) => {
       const m = l.match(/^(?:[-*]\s*)?\[( |x|X)\]\s*(.*)$/);
       return m ? { done: m[1] !== ' ', text: m[2] } : { done: false, text: l.replace(/^[-*]\s+/, '') };
     }).filter((it) => it.text);
   }
   function saveMemo(items) {
-    L.data.memo = { text: items.map((it) => (it.done ? '[x] ' : '[ ] ') + it.text).join('\n'), updated: Date.now(), history: memo().history || [] };
+    L.data.memo = { ...memo(), text: items.map((it) => (it.done ? '[x] ' : '[ ] ') + it.text).join('\n'), updated: Date.now(), history: memo().history || [] };
     L.save();
   }
   // Items cleared once checked come back as "Souvent achetés" suggestions (most recent first).
@@ -1024,8 +1111,13 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
         <input id="memo-input" class="memo-input" type="text" placeholder="Ajouter un article…" maxlength="200" value="${esc(app.memoDraft || '')}" data-act="memo-draft" data-key="memo-input" enterkeyhint="done" autocomplete="off">
         <button class="add-btn" type="submit" aria-label="Ajouter à la liste" data-key="memo-add">${plus}</button></form>`;
     const headHtml = `<div class="mod-head"><h2>${esc((mod && mod.title) || 'Courses')}</h2><span class="muted small">${meta}</span></div>`;
+    const listId = memoList();
+    const slot = listId ? todoSlot(listId) : null;
     let body;
-    if (tiny) {
+    if (slot && !slot.items) {
+      const name = app.states && app.states.get(listId) ? M.shortName(app.states.get(listId)) : listId;
+      body = `<p class="muted small memo-wait">${slot.error ? 'Liste « ' + esc(name) + ' » introuvable dans Home Assistant.' : 'Chargement de la liste ' + esc(name) + '…'}</p>`;
+    } else if (tiny) {
       body = `<ul class="memo-list is-tiny" data-scroll="hero-memo">${items.map((it, i) => `<li>${check(it, i, 'memo-item')}</li>`).join('')}</ul>`;
     } else if (strip) {
       const adding = w === 2 && app.memoAdding;
@@ -1033,7 +1125,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
         ${w >= 3 ? form('is-side') : adding ? '' : `<button class="add-btn" data-act="memo-add-open" data-key="memo-add-open" aria-label="Ajouter un article">${plus}</button>`}</div>`;
     } else {
       const have = new Set(items.map((it) => it.text.toLowerCase()));
-      const sugg = h >= 3 ? (memo().history || []).filter((t) => !have.has(t.toLowerCase())).slice(0, w >= 3 ? 8 : 4) : [];
+      const sugg = h >= 3 ? memoSuggestions().filter((t) => !have.has(t.toLowerCase())).slice(0, w >= 3 ? 8 : 4) : [];
       body = `<ul class="memo-list" data-scroll="hero-memo" style="grid-template-columns: repeat(${w >= 3 ? 2 : 1}, minmax(0, 1fr))">${items.map((it, i) => `<li>${check(it, i, 'memo-item')}</li>`).join('')}</ul>
         ${sugg.length ? `<div class="memo-sugg"><span class="sec-label">Souvent achetés</span><div class="memo-sugg-list">${sugg.map((t, i) =>
           `<button class="sugg-btn" data-act="memo-add" data-arg="${esc(t)}" data-key="memo-sugg:${i}">${icon(IC.plus, 14, 2.4)}${esc(t)}</button>`).join('')}</div></div>` : ''}
@@ -1477,6 +1569,12 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
           }).join('')}${pick ? '<button type="button" class="link-btn" data-act="draft-rooms-all" data-key="rp-all">Toutes</button>' : ''}</div>
           <p class="muted small">L'ordre suit celui des Réglages › Pièces. Les nouvelles pièces s'ajoutent seules tant que « toutes » sont cochées.</p>`;
         })() : ''}
+        ${d.type === 'home-notes' ? (() => {
+          const cur = md.memoList !== undefined ? md.memoList : (memoList() || 'local');
+          const opts = [['local', 'Ce tableau de bord']].concat(todoIds().map((id) => [id, esc(M.shortName(app.states.get(id))) + (isBring(id) ? ' (Bring!)' : '')]));
+          return `<div class="field-row"><span class="field-label">Liste</span>${seg('draft-memo-list', cur, opts)}</div>
+            <p class="muted small">${todoIds().length ? 'Une liste de Home Assistant (Bring!, Liste de courses…) se met à jour ici et sur vos téléphones. La liste du tableau de bord est gardée : vous pouvez y revenir.' : 'Pour partager la liste avec vos téléphones, ajoutez l’intégration Bring! dans Home Assistant : elle apparaîtra ici.'}</p>`;
+        })() : ''}
         ${d.type === 'calendar' || d.type === 'home-agenda' ? `<div class="field-row"><span class="field-label">Infos trafic</span>${seg('draft-traffic', d.options.traffic ? 'on' : '', [['', 'Masquées'], ['on', 'Affichées']])}</div>
           <p class="muted small">Les événements « RER D : … », « Ligne D : … » de vos calendriers s'affichent dans le module Départs train / RER.</p>
           <div class="field-row"><span class="field-label">Affichage</span>${seg('draft-view', d.options.view || 'list', HD.Modules.CAL_VIEWS)}</div>
@@ -1879,6 +1977,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     'draft-hfont'(arg) { if (arg) app.modal.draft.options.hFont = arg; else delete app.modal.draft.options.hFont; render(); },
     'draft-hfmt'(arg) { if (arg) app.modal.draft.options.fmt = arg; else delete app.modal.draft.options.fmt; render(); },
     'draft-view'(arg) { app.modal.draft.options.view = arg; render(); },
+    'draft-memo-list'(arg) { app.modal.memoList = arg; render(); },
     'draft-traffic'(arg) { if (arg) app.modal.draft.options.traffic = true; else delete app.modal.draft.options.traffic; render(); },
     'draft-days'(arg) { app.modal.draft.options.days = Number(arg); render(); },
     'draft-dir'(arg) {
@@ -1893,6 +1992,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       for (const [k, v] of Object.entries(app.modal.names)) if (v && v.trim()) names[k] = v.trim();
       L.data.names = names;
       const inHeader = app.modal.inHeader;
+      if (app.modal.memoList !== undefined) { memo().list = app.modal.memoList; app.todoJustDone = new Set(); }
       app.modal = null;
       if (inHeader) {
         const items = L.headerItems();
@@ -1980,8 +2080,8 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     },
     'conn-retry'() { if (app.conn && app.conn.retryNow) app.conn.retryNow(); else location.reload(); },
     'all-off'() { call('light', 'turn_off', 'all'); },
-    'memo-clear'() { const items = memoItems(); rememberBought(items.filter((it) => it.done).map((it) => it.text)); saveMemo(items.filter((it) => !it.done)); render(); },
-    'memo-add'(text) { if (text) saveMemo(memoItems().concat({ done: false, text })); render(); },
+    'memo-clear'() { memoClear(); render(); },
+    'memo-add'(text) { memoAdd(text); render(); },
     'memo-add-open'() { app.memoAdding = true; render(true); const i = document.getElementById('memo-input'); if (i) i.focus(); },
     export() { download('maison-disposition.json', L.exportJson()); },
     import() { const f = document.getElementById('import-file'); if (f) f.click(); },
@@ -2022,7 +2122,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       e.preventDefault();
       const text = String(app.memoDraft || '').trim();
       if (!text) return;
-      saveMemo(memoItems().concat({ done: false, text }));
+      memoAdd(text);
       app.memoDraft = '';
       const input = document.getElementById('memo-input');
       if (input) input.value = '';
@@ -2107,9 +2207,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       const x = moduleOf(t);
       if (x && x.list[0] && t.value) call('media_player', 'select_source', x.list[0].entity_id, { source: t.value });
     } else if (act === 'memo-check') {
-      const items = memoItems();
-      const it = items[Number(t.dataset.arg)];
-      if (it) { it.done = t.checked; saveMemo(items); }
+      memoSetDone(Number(t.dataset.arg), t.checked);
       render();
     } else if (act === 'pick') {
       const d = app.modal.draft;

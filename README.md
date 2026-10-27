@@ -40,7 +40,7 @@ et remplit exactement l'écran :
 - **Météo** : actuelle, prochaines heures, jours suivants (barre min → max) ; un toucher ouvre le détail
 - **Pièces** : température (orange = chaude), lumières allumées, une ampoule par pièce pour tout
   allumer / éteindre, « Tout éteindre » ; ⚙ › *Pièces affichées* pour n'en garder que certaines
-- **Courses** : liste à cocher (ajout au clavier, « Effacer les cochées »), enregistrée dans le compte HA ;
+- **Courses** : liste à cocher (ajout au clavier, « Effacer les cochées »), enregistrée dans le compte HA ; ou liée à une liste de tâches de Home Assistant (ex. intégration **Bring!**, partagée sur les téléphones) : choisie automatiquement si Bring! est installé, sinon dans ⚙ › Liste. Les changements faits sur un téléphone arrivent en direct, les articles achetés de Bring! deviennent les suggestions « Souvent achetés » ;
   à partir de 3 rangées, les articles effacés reviennent en « Souvent achetés »
 - **Notes** : un mémo libre
 - **Agenda** (2 colonnes) : les 7 prochains jours des calendriers HA (autres affichages dans ⚙)
