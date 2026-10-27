@@ -35,17 +35,20 @@ Le bouton **Essayer la démo** lance des données fictives (celles de la maquett
 
 ## Écran d'accueil (tablette)
 
-Le premier écran de l'Accueil reprend le design « Dashboard Maison – tablette » (1280×800) et
-remplit exactement l'écran :
-- **Météo** : actuelle, 5 prochaines heures, 4 jours, lever/coucher du soleil (`sun.sun`) ; un toucher ouvre le détail
-- **Pièces** : température (point vert = confort, ⚠ = valeur à vérifier), humidité, lampes allumées ;
-  boutons des lampes à toucher, bouton pour éteindre la pièce, « Voir les N » ouvre la pièce
-  ; ⚙ › *Pièces affichées* pour n'en garder que certaines. En petit (moins de 2×3 selon le nombre de
-  pièces), une ligne par pièce : nom, température et un bouton qui allume / éteint ses lampes ;
-  sur une seule ligne de hauteur, les pièces côte à côte (glisser pour voir les suivantes)
-- **Scènes** : « Tout éteindre » (toutes les lampes) + 3 scènes Home Assistant
-- **Agenda** : 7 jours des calendriers HA, avec une alerte si des RER sont supprimés ou en retard dans l'heure
-- **Notes** : liste à cocher (ajout au clavier, « Effacer les cochées »), enregistrée dans le compte HA
+Le premier écran de l'Accueil reprend le design « Dashboard Maison » (4 colonnes, 2 rangées de cartes)
+et remplit exactement l'écran :
+- **Météo** : actuelle, prochaines heures, jours suivants (barre min → max) ; un toucher ouvre le détail
+- **Pièces** : température (orange = chaude), lumières allumées, une ampoule par pièce pour tout
+  allumer / éteindre, « Tout éteindre » ; ⚙ › *Pièces affichées* pour n'en garder que certaines
+- **Courses** : liste à cocher (ajout au clavier, « Effacer les cochées »), enregistrée dans le compte HA ;
+  à partir de 3 rangées, les articles effacés reviennent en « Souvent achetés »
+- **Notes** : un mémo libre
+- **Agenda** (2 colonnes) : les 7 prochains jours des calendriers HA (autres affichages dans ⚙)
+- **Lecture en cours** : Spotify / lecteur multimédia (pochette, commandes, appareil, volume)
+- **Départs RER** : prochains trains, retards et infos trafic
+
+Chaque module a une mise en page dédiée à chaque taille (de 1×1 à 4×4) : par exemple la météo en
+bandeau sur une rangée, en colonne sur une largeur, complète à partir de 2×2.
 
 Chacun de ces blocs est un module comme les autres : avec le crayon, on peut le déplacer,
 l'étirer, le supprimer ou le remettre (« + Module »). Vos propres modules se placent dessous, en

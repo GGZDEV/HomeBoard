@@ -57,7 +57,10 @@ window.HD = window.HD || {};
       if (out.accent === '#FF9F0A' && !d.accentSet) out.accent = '#F5C542';
       if (d.accentSet) out.accentSet = true;
       if (d.hero === false) out.hero = false; // home screen (tablet design) on by default
-      if (d.memo && typeof d.memo.text === 'string') out.memo = { text: d.memo.text.slice(0, 20000), updated: Number(d.memo.updated) || 0 };
+      if (d.memo && typeof d.memo.text === 'string') {
+        out.memo = { text: d.memo.text.slice(0, 20000), updated: Number(d.memo.updated) || 0,
+          history: Array.isArray(d.memo.history) ? d.memo.history.filter((t) => typeof t === 'string' && t.trim()).map((t) => t.slice(0, 200)).slice(0, 20) : [] };
+      }
       if (typeof d.outdoor === 'string') out.outdoor = d.outdoor;
       if (d.names && typeof d.names === 'object') {
         for (const [k, v] of Object.entries(d.names)) if (typeof v === 'string' && v.trim()) out.names[k] = v.trim().slice(0, 80);
@@ -96,10 +99,12 @@ window.HD = window.HD || {};
       return out;
     },
 
-    // Home screen of the tablet design on the 4-column grid: weather | rooms + shortcuts | agenda + notes.
+    // Home screen of the design « Dashboard Maison » (Large: 4 columns, 2 rows of cards):
+    // weather | rooms | shopping list | notes, then agenda (2 wide) | music | trains.
     homeBlocks() {
       const mod = (type, w, h) => ({ ...this.newModule(type, 'all'), w, h });
-      return [mod('home-weather', 1, 4), mod('home-rooms', 2, 3), mod('home-agenda', 1, 2), mod('home-scenes', 2, 1), mod('home-notes', 1, 2)];
+      return [mod('home-weather', 1, 2), mod('home-rooms', 1, 2), mod('home-notes', 1, 2), mod('notes', 1, 2),
+        mod('home-agenda', 2, 2), mod('media', 1, 2), mod('transit', 1, 2)];
     },
 
     exportJson() { return JSON.stringify(this.data, null, 2); },
@@ -132,7 +137,7 @@ window.HD = window.HD || {};
     headerItems() {
       if (!this.data.header) {
         const it = (type, zone) => ({ ...this.newModule(type, 'all'), zone });
-        this.data.header = { items: [it('h-date', 'left'), it('h-clock', 'center'), it('h-lights', 'right'), it('h-temps', 'right'), it('h-fullscreen', 'right')] };
+        this.data.header = { items: [it('h-date', 'left'), it('h-clock', 'center'), it('h-temps', 'right'), it('h-fullscreen', 'right')] };
       }
       return this.data.header.items;
     },

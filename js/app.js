@@ -275,21 +275,7 @@
     el.classList.toggle('fade-b', more && el.scrollTop + el.clientHeight < el.scrollHeight - 4);
     el.classList.toggle('fade-t', more && el.scrollTop > 4);
   }
-  function updateFades() { $app.querySelectorAll('[data-scroll]').forEach(fade); fitPills(); }
-  // Room tiles: a row of light buttons that doesn't fit is hidden whole (never cut in half);
-  // "Voir les N" goes first (the room name opens the room too), then the last lights; the power button stays.
-  function fitPills() {
-    $app.querySelectorAll('.room-pills').forEach((box) => {
-      const kids = [...box.children];
-      kids.forEach((k) => { k.hidden = false; });
-      const order = kids.filter((k) => k.classList.contains('ghost'))
-        .concat(kids.filter((k) => k.classList.contains('light-pill') && !k.classList.contains('ghost')).reverse());
-      for (const k of order) {
-        if (box.scrollHeight <= box.clientHeight + 1) break;
-        k.hidden = true;
-      }
-    });
-  }
+  function updateFades() { $app.querySelectorAll('[data-scroll]').forEach(fade); }
   $app.addEventListener('scroll', (e) => { if (e.target.dataset && e.target.dataset.scroll) fade(e.target); }, true);
   // Size grid rows from the space really available, so 4 rows = exactly the visible height:
   // a height-4 module is never cut off, whatever the screen. Stacked (phone) layout: natural heights.
@@ -498,8 +484,9 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       case 'h-lights': return chip(IC.bulb, esc(plural(lightsOn(), 'allumé', 'allumés')));
       case 'h-temps': {
         const ti = indoorTemp(), te = outdoorTemp();
-        const txt = [ti != null ? 'Int. ' + M.fmtNum(ti) + '°' : '', te != null ? 'Ext. ' + M.fmtNum(te, 0) + '°' : ''].filter(Boolean).join(' · ');
-        return chip(IC.thermo, esc(txt || '—'));
+        const part = (l, v) => `<span><span class="muted">${l}</span> ${esc(v)}</span>`;
+        const txt = [ti != null ? part('Int.', M.fmtNum(ti) + '°') : '', te != null ? part('Ext.', M.fmtNum(te, 0) + '°') : ''].filter(Boolean).join('<i class="hchip-sep" aria-hidden="true"></i>');
+        return `<span class="hchip is-temps">${icon(IC.thermo, 18, 2)}<span class="hchip-text">${txt || '—'}</span></span>`;
       }
       case 'h-fullscreen':
         return fsSupported() ? `<button class="card hov round-btn" data-act="fullscreen" data-key="fullscreen" aria-label="${fsEl() ? 'Quitter le plein écran' : 'Plein écran'}">${icon(fsEl() ? IC.shrink : IC.expand, 18, 2)}</button>`
@@ -561,7 +548,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       case 'scenes': return `<span class="hchip-group">${list.slice(0, 3).map((s) => btnChip(M.sceneIcon(M.shortName(s)), esc(M.shortName(s)), `data-act="scene" data-arg="${esc(s.entity_id)}" data-key="${m.id}:hsc:${esc(s.entity_id)}"`)).join('')}</span>`;
       case 'home-scenes': return btnChip(IC.power, 'Tout éteindre', `data-act="all-off" data-arg="all" data-key="${m.id}:hoff"`);
       case 'notes': return chip(IC.note, esc((String(o.text || '').split('\n').find((l) => l.trim()) || 'Notes').slice(0, 40)));
-      case 'home-notes': return chip(IC.note, esc(plural(memoItems().filter((it) => !it.done).length, 'note', 'notes')));
+      case 'home-notes': return chip(IC.check, esc(plural(memoItems().filter((it) => !it.done).length, 'article', 'articles')));
       case 'rooms': case 'home-rooms': return btnChip(IC.home, esc(plural(visibleRooms().length, 'pièce', 'pièces') + ' · ' + plural(lightsOn(), 'allumé', 'allumés')), `data-act="tab" data-arg="rooms" data-key="${m.id}:hrooms"`);
       case 'automations': return chip(IC.robot, esc(plural(list.filter((s) => s.state === 'on').length, 'active', 'actives')));
       default: return chip(t.icon, esc(m.title || t.name));
@@ -781,7 +768,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     'home-rooms': homeType('Pièces et lumières', 'Chaque pièce avec sa température et ses lampes à allumer d\'un toucher.', IC.home, 2, 3, (m) => heroRooms(m)),
     'home-scenes': homeType('Raccourcis', '« Tout éteindre » et vos trois premières scènes.', IC.spark, 2, 1, () => heroScenes()),
     'home-agenda': homeType('Agenda (accueil)', 'Les prochains jours de vos calendriers ; plusieurs affichages.', IC.calendar, 1, 2, (m) => heroAgenda(m)),
-    'home-notes': homeType('Liste de notes', 'Une liste à cocher partagée (courses, rappels…).', IC.note, 1, 2, (m) => heroNotes(m))
+    'home-notes': homeType('Courses', 'Une liste à cocher partagée : courses, choses à faire…', IC.check, 1, 2, (m) => heroNotes(m))
   });
 
   function heroWeather(m) {
@@ -791,98 +778,61 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     if (!st) return `<section class="card hero-card hero-weather"><div class="mod-head"><h2>Météo</h2></div><p class="muted small">Aucune entité météo dans Home Assistant (intégration Météo-France par exemple).</p></section>`;
     const a = st.attributes;
     const days = W.dailyItems(forecastFor(st, 'main'));
-    const today = new Date().toDateString();
-    const todayFc = days.find((f) => new Date(f.datetime).toDateString() === today);
+    const todayKey = new Date().toDateString();
+    const todayFc = days.find((f) => new Date(f.datetime).toDateString() === todayKey);
     const hourlyFc = forecastFor(st, 'hourly');
-    // What fits: each size gets its own selection instead of a cut-off list.
-    const wide = w >= 2;
-    const nDays = h === 1 ? (w >= 3 ? 3 : 0) : wide ? (h === 2 ? 4 : 5) : h === 2 ? 2 : h === 3 ? 3 : 4;
-    const nHours = h === 1 ? (w >= 4 ? 6 : w >= 2 ? 5 : 0) : wide && h >= 3 ? 6 : 5;
-    const next = days.filter((f) => new Date(f.datetime).toDateString() !== today && new Date(f.datetime) > new Date()).slice(0, nDays);
+    // Design « Météo »: 1×1 centered · x×1 a strip · 1×n a column · 2+×2+ complete. Each size its own selection.
+    const tiny = w === 1 && h === 1, strip = h === 1 && w >= 2, narrow = w === 1 && h >= 2, big = w >= 2 && h >= 2;
+    const nHours = strip ? (w === 2 ? 3 : w === 3 ? 6 : 9) : narrow ? 4 : big ? (w === 2 ? 5 : w === 3 ? 7 : 9) : 0;
+    const nDays = tiny || strip ? 0 : h === 2 ? 3 : h === 3 ? 5 : 7;
+    const upcoming = days.filter((f) => new Date(f.datetime).toDateString() === todayKey || new Date(f.datetime) > new Date());
+    const next = upcoming.slice(0, nDays);
     const hours = nHours && hourlyFc && hourlyFc.items ? hourlyFc.items.filter((x) => Date.parse(x.datetime) > Date.now() - 30 * 60000).slice(0, nHours) : [];
-    const lo = Math.min(...next.map((f) => (f.templow != null ? f.templow : f.temperature)));
-    const hi = Math.max(...next.map((f) => f.temperature));
+    const lowOf = (f) => (f.templow != null ? f.templow : f.temperature);
+    const lo = Math.min(...next.map(lowOf)), hi = Math.max(...next.map((f) => f.temperature));
     const span = hi - lo || 1;
-    const sun = app.states.get('sun.sun');
-    const showSun = h >= 4 || (wide && h >= 2);
-    const sunLine = showSun && sun && sun.attributes.next_rising && sun.attributes.next_setting
-      ? `<span class="hero-foot muted small"><span>Lever ${hhmm(new Date(sun.attributes.next_rising))}</span><span>Coucher ${hhmm(new Date(sun.attributes.next_setting))}</span></span>` : '';
-    const range = todayFc && todayFc.templow != null ? esc(M.fmtNum(todayFc.templow, 0)) + '° / ' + esc(M.fmtNum(todayFc.temperature, 0)) + '°' : '';
-    const now = `<span class="wx-hero-now">${W.wxArt(st.state, h === 1 ? 44 : 56)}
-        <span class="stack"><span class="wx-hero-temp">${esc(M.fmtNum(a.temperature, 0))}°</span>
-        <span class="wx-hero-sub">${esc(M.WEATHER[st.state] || st.state)}${range ? ' · ' + range : ''}</span></span>
-      </span>`;
-    const chips = h === 1 ? '' : `<span class="wx-hero-chips">
-        ${a.humidity != null ? `<span>Hum. ${esc(M.fmtNum(a.humidity, 0))} %</span>` : ''}
-        ${a.wind_speed != null ? `<span>Vent ${esc(M.fmtNum(a.wind_speed, 0))} ${esc(a.wind_speed_unit || 'km/h')}</span>` : ''}
-      </span>`;
-    const hoursHtml = hours.length ? `<span class="wx-hero-hours" style="grid-template-columns: repeat(${hours.length}, minmax(0, 1fr))">${hours.map((x) =>
-        `<span><span class="muted">${new Date(x.datetime).getHours()}h</span><b>${esc(M.fmtNum(x.temperature, 0))}°</b></span>`).join('')}</span>` : '';
-    const daysHtml = next.length ? `<span class="wx-hero-days">${next.map((f, i) => {
-        const l = f.templow != null ? f.templow : f.temperature;
-        const a1 = Math.round(((l - lo) / span) * 100), a2 = Math.max(a1 + 6, Math.round(((f.temperature - lo) / span) * 100));
-        return `<span class="wx-hero-day"><span class="muted">${esc(W.dayLabel(f.datetime, i + 1))}</span>
-          <span class="wx-hero-bar" style="background: linear-gradient(90deg, rgba(255,255,255,0.15) ${a1}%, var(--accent) ${a1}%, var(--accent) ${a2}%, rgba(255,255,255,0.15) ${a2}%)"></span>
-          <span class="muted">${esc(M.fmtNum(l, 0))}°</span><b>${esc(M.fmtNum(f.temperature, 0))}°</b></span>`;
+    const t0 = todayFc || days[0];
+    const n0 = (v) => esc(M.fmtNum(v, 0)) + '°';
+    const range = t0 && t0.templow != null ? n0(t0.templow) + ' / ' + n0(t0.temperature) : '';
+    const minMax = t0 && t0.templow != null ? 'Min ' + n0(t0.templow) + ' · Max ' + n0(t0.temperature) : '';
+    const cond = esc(M.WEATHER[st.state] || st.state);
+    const temp = (size) => `<span class="wh-temp" style="font-size: ${size}px">${n0(a.temperature)}</span>`;
+    const hum = a.humidity != null ? esc(M.fmtNum(a.humidity, 0)) + ' %' : null;
+    const wind = a.wind_speed != null ? esc(M.fmtNum(a.wind_speed, 0)) + ' ' + esc(a.wind_speed_unit || 'km/h') : null;
+    const stat = (ic, color, label, v) => v == null ? '' : `<span class="wh-stat">${icon(ic, 18, 1.8).replace('stroke="currentColor"', `stroke="${color}"`)}<span class="stack"><span class="muted">${label}</span><b>${v}</b></span></span>`;
+    const stats = stat(IC.drop, '#8EC5FF', 'Humidité', hum) + stat(IC.wind, 'currentColor', 'Vent', wind);
+    const hoursHtml = (boxed) => hours.length ? `<span class="wh-hours${boxed ? ' is-boxed' : ''}">${hours.map((x) =>
+        `<span class="wh-hr"><span class="muted">${new Date(x.datetime).getHours()}h</span>${W.wxArt(x.condition || st.state, 22)}<b>${n0(x.temperature)}</b></span>`).join('')}</span>` : '';
+    const daysHtml = next.length ? `<span class="wh-days${narrow ? ' is-narrow' : ''}">${next.map((f, i) => {
+        const l = lowOf(f);
+        const left = ((l - lo) / span) * 100, width = Math.max(4, ((f.temperature - l) / span) * 100);
+        return `<span class="wh-day"><span>${esc(W.dayLabel(f.datetime, i))}</span><span class="muted wh-num">${n0(l)}</span>
+          <span class="wh-track"><i style="left: ${left.toFixed(1)}%; width: ${Math.min(100 - left, width).toFixed(1)}%"></i></span><b class="wh-num">${n0(f.temperature)}</b></span>`;
       }).join('')}</span>` : '';
+    const upd = st.last_updated ? ' · maj. ' + hhmm(new Date(st.last_updated)) : '';
+    const title = esc((m && m.title) || 'Météo');
+    const headHtml = (meta) => `<span class="mod-head"><span class="h2">${title}</span><span class="muted small">${meta}</span></span>`;
     let inner;
-    if (h === 1) inner = `<span class="wx-row">${now}${hoursHtml}${daysHtml}</span>`;
-    else if (wide) inner = `<span class="wx-cols"><span class="wx-col">${now}${chips}<span class="grow"></span>${sunLine}</span><span class="wx-col">${hoursHtml}${daysHtml}</span></span>`;
-    else inner = `${now}${chips}${hoursHtml}${daysHtml}<span class="grow"></span>${sunLine}`;
-    return `<div class="card hero-card hero-weather wx-h${h}${wide ? ' wx-wide' : ''}" role="button" tabindex="0" data-act="weather-open" data-arg="${esc(st.entity_id)}" data-key="hero:wx" aria-label="Météo, prévisions détaillées">
-      ${h === 1 ? '' : `<span class="mod-head"><span class="h2">${esc((m && m.title) || 'Météo')}</span><span class="muted small">${esc(M.shortName(st))}</span></span>`}
+    if (tiny) {
+      inner = `<span class="wh-tiny">${W.wxArt(st.state, 48)}${temp(44)}<b class="wh-cond">${cond}</b>${range ? `<span class="muted small wh-num">${range}</span>` : ''}</span>`;
+    } else if (strip) {
+      inner = `<span class="wh-strip"><span class="wh-strip-now"><span class="h2">${title}</span><span class="wh-now">${W.wxArt(st.state, 44)}${temp(44)}</span>
+          <span class="muted small wh-num">${cond}${range ? ' · ' + range : ''}</span></span><span class="wh-sep" aria-hidden="true"></span>${hoursHtml(false)}</span>`;
+    } else if (narrow) {
+      inner = headHtml(esc(M.shortName(st))) + `<span class="wh-center"><span class="wh-now">${W.wxArt(st.state, 44)}${temp(44)}</span><b class="wh-cond">${cond}</b>${range ? `<span class="muted small wh-num">${range}</span>` : ''}</span>
+        ${hoursHtml(true)}
+        ${h >= 3 ? `<span class="wh-list">${hum != null ? `<span><span class="muted">Humidité</span><b>${hum}</b></span>` : ''}${wind != null ? `<span><span class="muted">Vent</span><b>${wind}</b></span>` : ''}</span>` : ''}
+        ${daysHtml}`;
+    } else {
+      const statsText = w === 2 && h === 2 && (hum != null || wind != null) ? `<span class="muted small wh-num ell">${[hum != null ? 'Hum. ' + hum : '', wind != null ? 'Vent ' + wind : ''].filter(Boolean).join(' · ')}</span>` : '';
+      inner = headHtml(esc(M.shortName(st)) + upd) + `<span class="wh-big-now">${W.wxArt(st.state, 56)}${temp(56)}
+          <span class="stack wh-desc"><b class="wh-cond">${cond}</b>${minMax ? `<span class="muted small wh-num">${minMax}</span>` : ''}${statsText}</span>
+          ${w >= 3 ? `<span class="wh-stats is-inline">${stats}</span>` : ''}</span>
+        ${w === 2 && h >= 3 ? `<span class="wh-stats">${stats}</span>` : ''}
+        ${hoursHtml(true)}${daysHtml}`;
+    }
+    return `<div class="card hero-card hero-weather wxv-${tiny ? 'tiny' : strip ? 'strip' : narrow ? 'narrow' : 'big'}" role="button" tabindex="0" data-act="weather-open" data-arg="${esc(st.entity_id)}" data-key="hero:wx" aria-label="Météo, prévisions détaillées">
       ${inner}
-    </div>`;
-  }
-
-  function roomCard(room) {
-    const sts = room.ids.map((id) => app.states.get(id)).filter(Boolean);
-    const lights = sts.filter((s) => M.domainOf(s.entity_id) === 'light');
-    const devices = sts.filter(M.isGridEntity);
-    const on = lights.filter((l) => l.state === 'on');
-    const hums = sts.filter((s) => M.isHumidity(s) && M.isAvail(s)).map((s) => Number(s.state));
-    const t = roomTemp(room);
-    const z = HD.Modules.tempZone(t, {});
-    // Comfort = green dot; cold/warm = colored dot; implausible (very hot) = warning sign.
-    const tempHtml = t == null ? '' : z && z.id === 'tres'
-      ? `<span class="room-temp-big is-warn" title="Valeur à vérifier">${icon(WARN_PATH, 18, 2)}${esc(M.fmtNum(t))}°</span>`
-      : `<span class="room-temp-big"><i style="background: ${z && z.id !== 'confort' ? z.color : 'var(--ok)'}"></i>${esc(M.fmtNum(t))}°</span>`;
-    const sub = [hums.length ? 'Hum. ' + M.fmtNum(avg(hums), 0) + ' %' : '', lights.length ? on.length + '/' + lights.length + ' ' + (on.length > 1 ? 'allumés' : 'allumé') : ''].filter(Boolean).join(' · ');
-    const shown = lights.slice(0, 3);
-    const pills = shown.map((l) => {
-      const isOn = l.state === 'on';
-      const off = M.UNAVAILABLE.includes(l.state);
-      return `<button class="light-pill${isOn ? ' is-on' : ''}" ${off ? 'disabled' : ''} aria-pressed="${isOn}" data-act="dev" data-arg="${esc(l.entity_id)}" data-key="hero:${esc(l.entity_id)}">
-        <span class="lp-ic">${icon(IC.bulb, 16, 2)}</span><span class="lp-name">${esc(M.shortName(l, room.name))}</span></button>`;
-    }).join('');
-    const more = devices.length > shown.length
-      ? `<button class="light-pill ghost" data-act="open-room" data-arg="${esc(room.id)}" data-key="hero:more:${esc(room.id)}">Voir les ${devices.length}</button>` : '';
-    const power = on.length
-      ? `<button class="power-btn" aria-label="Éteindre ${esc(room.name)}" data-act="room-off" data-arg="${esc(room.id)}" data-key="hero:off:${esc(room.id)}">${icon(IC.power, 18)}</button>` : '';
-    const empty = !devices.length
-      ? `<div class="room-empty">Aucun appareil${room.id !== '__autres' && app.conn && app.conn.baseUrl !== 'demo' ? ` · <a class="btn-mini" href="${esc(app.conn.baseUrl)}/config/areas/area/${encodeURIComponent(room.id)}" target="_blank" rel="noopener">+ Ajouter</a>` : ''}</div>` : '';
-    return `<div class="room-tile">
-      <div class="room-tile-head">
-        <button class="room-tile-name" data-act="open-room" data-arg="${esc(room.id)}" data-key="hero:room:${esc(room.id)}"><span class="rt-name">${esc(room.name)}</span>${sub ? `<span class="muted small">${esc(sub)}</span>` : ''}</button>
-        ${tempHtml}
-      </div>
-      ${empty || `<div class="room-pills">${pills}${more}${power}</div>`}
-    </div>`;
-  }
-
-  // Small version of a room: one line with its name, temperature and a button for its lights.
-  function roomMini(room) {
-    const sts = room.ids.map((id) => app.states.get(id)).filter(Boolean);
-    const lights = sts.filter((s) => M.domainOf(s.entity_id) === 'light');
-    const on = lights.filter((l) => l.state === 'on');
-    const t = roomTemp(room);
-    const z = HD.Modules.tempZone(t, {});
-    const dot = z && z.id !== 'confort' ? z.color : 'var(--ok)';
-    const sub = lights.length ? on.length + '/' + lights.length + ' ' + (on.length > 1 ? 'allumés' : 'allumé') : '';
-    return `<div class="room-mini${on.length ? ' is-on' : ''}">
-      <button class="rm-name" data-act="open-room" data-arg="${esc(room.id)}" data-key="hero:room:${esc(room.id)}"><span class="rt-name">${esc(room.name)}</span>${sub ? `<span class="muted small">${esc(sub)}</span>` : ''}</button>
-      ${t != null ? `<span class="rm-temp"><i style="background: ${dot}"></i>${esc(M.fmtNum(t))}°</span>` : ''}
-      ${lights.length ? `<button class="rm-light${on.length ? ' is-on' : ''}" aria-pressed="${!!on.length}" aria-label="${on.length ? 'Éteindre' : 'Allumer'} ${esc(room.name)}" data-act="room-toggle" data-arg="${esc(room.id)}" data-key="hero:rt:${esc(room.id)}">${icon(IC.bulb, 17, 2)}</button>` : ''}
     </div>`;
   }
 
@@ -893,33 +843,68 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     return pick ? all.filter((r) => pick.includes(r.id)) : all;
   }
 
+  // One room for the design « Pièces »: name, state of its lights, temperature, a bulb button.
+  function roomInfo(room) {
+    const sts = room.ids.map((id) => app.states.get(id)).filter(Boolean);
+    const lights = sts.filter((s) => M.domainOf(s.entity_id) === 'light');
+    const on = lights.filter((l) => l.state === 'on').length;
+    const t = roomTemp(room);
+    const z = HD.Modules.tempZone(t, {});
+    const hot = !!(z && (z.id === 'chaud' || z.id === 'tres'));
+    const sub = !lights.length ? (t == null ? 'Aucun capteur' : 'Aucune lumière')
+      : !on ? 'Lumières éteintes' : on + '/' + lights.length + ' ' + (on > 1 ? 'allumées' : 'allumée');
+    return { room, t, on, total: lights.length, hot, sub, temp: t == null ? '—' : M.fmtNum(t) + '°' };
+  }
+  function roomBulb(r) {
+    const label = !r.total ? 'Aucune lumière — ' + r.room.name : (r.on ? 'Éteindre' : 'Allumer') + ' — ' + r.room.name;
+    return `<button class="bulb${r.on ? ' is-on' : ''}" ${r.total ? '' : 'disabled'} aria-pressed="${!!r.on}" aria-label="${esc(label)}" title="${esc(label)}" data-act="room-toggle" data-arg="${esc(r.room.id)}" data-key="hero:rt:${esc(r.room.id)}">${icon(IC.bulb, 20, 2)}</button>`;
+  }
+  const roomName = (r, cls) => `<button class="rt-open${cls ? ' ' + cls : ''}" data-act="open-room" data-arg="${esc(r.room.id)}" data-key="hero:room:${esc(r.room.id)}"><span class="rt-name">${esc(r.room.name)}</span>`;
+  const tempCls = (r) => 'rt-temp' + (r.hot ? ' is-hot' : r.t == null ? ' is-none' : '');
+
   function heroRooms(m) {
     const w = m ? m.w : 2, h = m ? m.h : 3;
-    const rooms = moduleRooms(m);
+    const id = esc(m ? m.id : '');
+    const rooms = moduleRooms(m).map(roomInfo);
     const ti = indoorTemp();
     const n = lightsOn();
-    const cols = Math.max(1, Math.min(w, rooms.length || 1));
-    const rowsNeeded = Math.ceil(rooms.length / cols);
-    // Full tiles (with a button per lamp) need ~110 px each: rows that fit by height.
-    const fullRows = h === 1 ? 0 : h === 2 ? 2 : h === 3 ? 4 : 5;
-    const full = rowsNeeded <= fullRows;
-    const sub = [ti != null && w > 1 ? 'Moy. ' + M.fmtNum(ti) + '°' : '', plural(n, 'allumé', 'allumés')].filter(Boolean).join(' · ');
-    const empty = '<p class="muted small">' + (visibleRooms().length ? 'Aucune pièce choisie : ⚙ › Pièces affichées.' : 'Aucune pièce : assignez vos appareils à des zones dans Home Assistant.') + '</p>';
+    const avgTxt = ti != null ? 'Moy. ' + M.fmtNum(ti) + '°' : '';
+    const nOn = plural(n, 'lumière allumée', 'lumières allumées');
+    const allOff = (cls) => `<button class="ghost-btn${cls ? ' ' + cls : ''}" data-act="all-off" data-arg="all" data-key="hero:alloff:${id}${cls || ''}">${icon(IC.power, 18, 2)}Tout éteindre</button>`;
+    const tiny = w === 1 && h === 1, strip = h === 1 && w >= 2, narrow = w === 1 && h >= 2;
+    const title = esc((m && m.title) || 'Pièces');
+    const headHtml = (meta) => `<div class="mod-head"><h2>${title}</h2><span class="muted small">${esc(meta)}</span></div>`;
     let body;
-    if (!rooms.length) body = empty;
-    else if (h === 1 && w > 1) {
-      // One row: the rooms side by side, scrolling sideways if they don't all fit.
-      body = `<div class="room-strip" data-scroll="hero-rooms:${esc(m ? m.id : '')}" style="grid-template-columns: repeat(${rooms.length}, minmax(150px, 1fr))">${rooms.map(roomMini).join('')}</div>`;
-    } else if (full) {
-      body = `<div class="room-grid" style="grid-template-columns: repeat(${cols}, minmax(0, 1fr)); grid-template-rows: repeat(${rowsNeeded}, minmax(0, 1fr))">${rooms.map(roomCard).join('')}</div>`;
+    if (!rooms.length) {
+      body = headHtml('') + '<p class="muted small">' + (visibleRooms().length ? 'Aucune pièce choisie : ⚙ › Pièces affichées.' : 'Aucune pièce : assignez vos appareils à des zones dans Home Assistant.') + '</p>';
+    } else if (tiny) {
+      body = headHtml(avgTxt) + `<div class="rooms-count"><span class="rc-n">${n}</span><span>${n > 1 ? 'lumières<br>allumées' : 'lumière<br>allumée'}</span></div>${allOff('is-full')}`;
+    } else if (strip) {
+      const k = w === 2 ? 2 : w === 3 ? 3 : 5;
+      const shown = rooms.slice(0, k);
+      body = headHtml([avgTxt, nOn].filter(Boolean).join(' · ')) + `<div class="rooms-strip">${shown.map((r) => `<div class="rt${r.on ? ' is-on' : ''}">
+          <div class="rt-top">${roomName(r)}<span class="muted small ell">${esc(r.sub)}</span></button>${roomBulb(r)}</div>
+          <span class="${tempCls(r)}">${esc(r.temp)}</span></div>`).join('')}
+        ${rooms.length > k ? `<button class="ghost-btn rooms-more" data-act="tab" data-arg="rooms" data-key="hero:more:${id}"><b>+${rooms.length - k}</b><span class="muted small">pièces</span></button>` : ''}</div>`;
+    } else if (narrow) {
+      body = headHtml(plural(n, 'allumée', 'allumées')) +
+        (h >= 4 && ti != null ? `<div class="rooms-sum is-row"><span class="muted small">Moyenne</span><b>${esc(M.fmtNum(ti))}°</b></div>` : '') +
+        `<div class="rooms-list" data-scroll="hero-rooms:${id}">${rooms.map((r) => `<div class="rt is-row${r.on ? ' is-on' : ''}">
+          ${roomName(r)}<span class="${tempCls(r)}">${esc(r.temp)}</span></button>${roomBulb(r)}</div>`).join('')}</div>` +
+        (h >= 3 ? allOff('is-full') : '');
     } else {
-      const mcols = w === 1 ? 1 : Math.min(w, Math.max(1, Math.ceil(rooms.length / Math.max(1, h * 2 - 1))));
-      body = `<div class="room-list" data-scroll="hero-rooms:${esc(m ? m.id : '')}" style="grid-template-columns: repeat(${mcols}, minmax(0, 1fr))">${rooms.map(roomMini).join('')}</div>`;
+      const hottest = rooms.filter((r) => r.t != null).sort((a, b) => b.t - a.t)[0];
+      body = headHtml([avgTxt, nOn].filter(Boolean).join(' · ')) +
+        (h >= 3 ? `<div class="rooms-sum">
+          <span><span class="muted small">Moyenne</span><b>${ti != null ? esc(M.fmtNum(ti)) + '°' : '—'}</b></span>
+          <span><span class="muted small">Lumières</span><b>${esc(plural(n, 'allumée', 'allumées'))}</b></span>
+          <span><span class="muted small">Plus chaude</span><b class="ell${hottest && hottest.hot ? ' is-hot' : ''}">${hottest ? esc(hottest.room.name + ' · ' + hottest.temp) : '—'}</b></span></div>` : '') +
+        `<div class="rooms-grid" data-scroll="hero-rooms:${id}" style="grid-template-columns: repeat(${w === 2 ? 2 : 3}, minmax(0, 1fr)); --rt-temp: ${h >= 3 ? 32 : 24}px">${rooms.map((r) => `<div class="rt${r.on ? ' is-on' : ''}">
+          <div class="rt-top">${roomName(r)}<span class="muted small ell">${esc(r.sub)}</span></button>${roomBulb(r)}</div>
+          <span class="rt-bottom"><span class="${tempCls(r)}">${esc(r.temp)}</span>${r.hot ? '<span class="rt-hot">Chaud</span>' : ''}</span></div>`).join('')}
+          ${allOff('rt-off')}</div>`;
     }
-    return `<section class="card hero-card hero-rooms rooms-h${h}" aria-label="Pièces">
-      ${h === 1 && rooms.length ? '' : `<div class="mod-head"><h2>${esc((m && m.title) || 'Pièces')}</h2><span class="muted small">${sub}</span></div>`}
-      ${body}
-    </section>`;
+    return `<section class="card hero-card hero-rooms roomsv-${tiny ? 'tiny' : strip ? 'strip' : narrow ? 'narrow' : 'big'}" aria-label="Pièces">${body}</section>`;
   }
 
   function heroScenes() {
@@ -943,6 +928,18 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     const events = W.agendaEvents(W.calEvents(cals, data.raw).filter((ev) => ev.end > new Date()), o);
     app.calEvents = app.calEvents || {};
     app.calEvents[id] = events;
+    const title = esc((m && m.title) || 'Agenda');
+    // Default: the design's "Jours" view; the other views stay available in ⚙.
+    if (!o.view || o.view === 'jours') {
+      if (!cals.length) {
+        return `<section class="card hero-card hero-agenda" aria-label="Agenda"><div class="mod-head"><h2>${title}</h2></div>
+          <div class="mod-empty"><span class="empty-ic">${icon(IC.calendar, 22, 1.8)}</span><p class="muted small">Aucun calendrier : connectez Google Agenda dans Home Assistant (« Calendrier distant » ou « Google Calendar »).</p></div></section>`;
+      }
+      const r = W.calDays(events, { id, w: m ? m.w : 1, h: m ? m.h : 2, days, loading: data.loading && !events.length });
+      const tiny = m && m.w === 1 && m.h === 1;
+      return `<section class="card hero-card hero-agenda ag-${tiny ? 'tiny' : 'n'}" aria-label="Agenda">
+        <div class="mod-head"><h2>${title}</h2>${r.meta ? `<span class="muted small">${esc(r.meta)}</span>` : ''}</div>${r.html}</section>`;
+    }
     let list = W.calBody(events, { id, view: o.view, days, multi: cals.length > 1, narrow: !m || m.w === 1 });
     if (!events.length) {
       list = `<p class="muted small">${!cals.length ? 'Aucun calendrier : connectez Google Agenda dans Home Assistant (« Calendrier distant » ou « Google Calendar »).' : data.loading ? 'Chargement…' : days === 1 ? "Rien de prévu aujourd'hui." : 'Rien de prévu sur ' + days + ' jours.'}</p>`;
@@ -970,22 +967,48 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     }).filter((it) => it.text);
   }
   function saveMemo(items) {
-    L.data.memo = { text: items.map((it) => (it.done ? '[x] ' : '[ ] ') + it.text).join('\n'), updated: Date.now() };
+    L.data.memo = { text: items.map((it) => (it.done ? '[x] ' : '[ ] ') + it.text).join('\n'), updated: Date.now(), history: memo().history || [] };
     L.save();
   }
+  // Items cleared once checked come back as "Souvent achetés" suggestions (most recent first).
+  function rememberBought(texts) {
+    const seen = new Set(texts.map((t) => t.toLowerCase()));
+    memo().history = texts.concat((memo().history || []).filter((t) => !seen.has(t.toLowerCase()))).slice(0, 20);
+  }
 
+  // Design « Courses »: a checklist. 1×1 the items · x×1 chips (+ an add field from 3 wide) ·
+  // 2+ rows a list (2 columns from 3 wide), "Souvent achetés" from 3 rows, the add field at the bottom.
   function heroNotes(mod) {
+    const w = mod ? mod.w : 1, h = mod ? mod.h : 2;
     const items = memoItems();
-    const m = memo();
-    const when = m.updated ? M.relTime(new Date(m.updated).toISOString()) : null;
+    const left = items.filter((it) => !it.done).length;
     const anyDone = items.some((it) => it.done);
-    return `<section class="card hero-card hero-notes" aria-label="Notes">
-      <div class="mod-head"><h2>${esc((mod && mod.title) || 'Notes')}</h2><span class="muted small">${anyDone ? '<button class="link-btn" data-act="memo-clear" data-key="memo-clear">Effacer les cochées</button>' : when ? esc(when) : ''}</span></div>
-      <ul class="memo-list" data-scroll="hero-memo">${items.map((it, i) => `<li><label class="memo-item${it.done ? ' is-done' : ''}">
-        <input type="checkbox" ${it.done ? 'checked' : ''} data-act="memo-check" data-arg="${i}" data-key="memo:${i}"><span>${esc(it.text)}</span></label></li>`).join('')}</ul>
-      <form class="memo-form" id="memo-form"><label class="sr-only" for="memo-input">Nouvelle note</label>
-        <input id="memo-input" class="memo-input" type="text" placeholder="Ajouter une note…" maxlength="200" value="${esc(app.memoDraft || '')}" data-act="memo-draft" data-key="memo-input" enterkeyhint="done" autocomplete="off"></form>
-    </section>`;
+    const tiny = w === 1 && h === 1, strip = h === 1 && w >= 2;
+    const count = !items.length ? 'Liste vide' : !left ? 'Tout est pris' : plural(left, 'article', 'articles');
+    const meta = anyDone && !tiny ? `<button class="link-btn" data-act="memo-clear" data-key="memo-clear">Effacer les cochées</button>` : esc(count);
+    const plus = icon(IC.plus, 18, 2.4);
+    const check = (it, i, cls) => `<label class="${cls}${it.done ? ' is-done' : ''}"><input class="chk" type="checkbox" ${it.done ? 'checked' : ''} data-act="memo-check" data-arg="${i}" data-key="memo:${i}"><span>${esc(it.text)}</span></label>`;
+    // Only one add field on the page (it keeps the keyboard open between two items).
+    const form = (cls) => `<form class="memo-form${cls ? ' ' + cls : ''}" id="memo-form"><label class="sr-only" for="memo-input">Ajouter un article</label>
+        <input id="memo-input" class="memo-input" type="text" placeholder="Ajouter un article…" maxlength="200" value="${esc(app.memoDraft || '')}" data-act="memo-draft" data-key="memo-input" enterkeyhint="done" autocomplete="off">
+        <button class="add-btn" type="submit" aria-label="Ajouter à la liste" data-key="memo-add">${plus}</button></form>`;
+    const headHtml = `<div class="mod-head"><h2>${esc((mod && mod.title) || 'Courses')}</h2><span class="muted small">${meta}</span></div>`;
+    let body;
+    if (tiny) {
+      body = `<ul class="memo-list is-tiny" data-scroll="hero-memo">${items.map((it, i) => `<li>${check(it, i, 'memo-item')}</li>`).join('')}</ul>`;
+    } else if (strip) {
+      const adding = w === 2 && app.memoAdding;
+      body = `<div class="memo-strip">${adding ? form('is-grow') : `<div class="memo-chips" data-scroll="hero-memo">${items.map((it, i) => check(it, i, 'memo-chip')).join('') || '<span class="muted small">Liste vide</span>'}</div>`}
+        ${w >= 3 ? form('is-side') : adding ? '' : `<button class="add-btn" data-act="memo-add-open" data-key="memo-add-open" aria-label="Ajouter un article">${plus}</button>`}</div>`;
+    } else {
+      const have = new Set(items.map((it) => it.text.toLowerCase()));
+      const sugg = h >= 3 ? (memo().history || []).filter((t) => !have.has(t.toLowerCase())).slice(0, w >= 3 ? 8 : 4) : [];
+      body = `<ul class="memo-list" data-scroll="hero-memo" style="grid-template-columns: repeat(${w >= 3 ? 2 : 1}, minmax(0, 1fr))">${items.map((it, i) => `<li>${check(it, i, 'memo-item')}</li>`).join('')}</ul>
+        ${sugg.length ? `<div class="memo-sugg"><span class="sec-label">Souvent achetés</span><div class="memo-sugg-list">${sugg.map((t, i) =>
+          `<button class="sugg-btn" data-act="memo-add" data-arg="${esc(t)}" data-key="memo-sugg:${i}">${icon(IC.plus, 14, 2.4)}${esc(t)}</button>`).join('')}</div></div>` : ''}
+        ${form('')}`;
+    }
+    return `<section class="card hero-card hero-notes memov-${tiny ? 'tiny' : strip ? 'strip' : 'list'}" aria-label="Courses">${headHtml}${body}</section>`;
   }
 
   // ----- module pages -----
@@ -1053,7 +1076,13 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       // Nothing to show: say why; offer the picker only if HA has something compatible somewhere.
       const anywhere = [...(t.allStates ? app.states.keys() : app.index.visible)].some((id) => { const s = app.states.get(id); return s && t.pick(s); });
       const msg = t.manual ? 'Aucun capteur choisi.' : anywhere ? 'Aucun appareil compatible ici.' : (t.empty || 'Aucun appareil compatible trouvé dans Home Assistant.');
-      inner = HD.UI.head(m.title || t.name) + `<div class="mod-empty"><p class="muted small">${esc(msg)}</p>
+      const nothing = !t.manual && !anywhere;
+      const warn = nothing && t.emptyIcon === 'warn';
+      inner = HD.UI.head(m.title || (nothing && t.emptyName) || t.name) + `<div class="mod-empty">
+        <span class="empty-ic${warn ? ' is-warn' : ''}">${icon(warn ? WARN_PATH : t.icon, 22, 2)}</span>
+        ${nothing && t.emptyTitle ? `<p class="empty-title">${esc(t.emptyTitle)}</p>` : ''}
+        <p class="muted small">${esc(msg)}</p>
+        ${nothing && t.emptyCode ? `<code class="empty-code">${esc(t.emptyCode)}</code>` : ''}
         ${anywhere || t.manual ? `<button class="btn-glass sm" data-act="mod-config" data-key="${m.id}:cfg-empty">Choisir des appareils</button>` : ''}</div>`;
     } else {
       // A module set to "Toute la maison" on a room page behaves like a house-wide one.
@@ -1144,7 +1173,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
   // ---------- background ----------
   const grad = (a, b, c) => `${c} radial-gradient(120% 90% at 15% 0%, ${a} 0%, ${b} 45%, ${c} 100%) no-repeat fixed`;
   const BG_PRESETS = [
-    ['chaud', 'Chaud', grad('#8A735F', '#5E4B3E', '#3B3640')],
+    ['chaud', 'Chaud', '#3d3946 linear-gradient(160deg, #7d6553 0%, #5e5049 38%, #4a4351 72%, #3d3946 100%) no-repeat fixed'],
     ['nuit', 'Nuit', grad('#2F4A7A', '#1B2740', '#10141F')],
     ['ocean', 'Océan', grad('#2E7C8A', '#1A4A57', '#0E242C')],
     ['foret', 'Forêt', grad('#4F6B4A', '#2E4234', '#1A231D')],
@@ -1920,7 +1949,9 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     },
     'conn-retry'() { if (app.conn && app.conn.retryNow) app.conn.retryNow(); else location.reload(); },
     'all-off'() { call('light', 'turn_off', 'all'); },
-    'memo-clear'() { saveMemo(memoItems().filter((it) => !it.done)); render(); },
+    'memo-clear'() { const items = memoItems(); rememberBought(items.filter((it) => it.done).map((it) => it.text)); saveMemo(items.filter((it) => !it.done)); render(); },
+    'memo-add'(text) { if (text) saveMemo(memoItems().concat({ done: false, text })); render(); },
+    'memo-add-open'() { app.memoAdding = true; render(true); const i = document.getElementById('memo-input'); if (i) i.focus(); },
     export() { download('maison-disposition.json', L.exportJson()); },
     import() { const f = document.getElementById('import-file'); if (f) f.click(); },
     'reset-all'() {
@@ -2328,6 +2359,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
   // Leaving a note: save right away and catch up on updates skipped while typing.
   $app.addEventListener('focusout', (e) => {
     if (!e.target.classList || !(e.target.classList.contains('note') || e.target.classList.contains('memo-input'))) return;
+    if (app.memoAdding && e.target.classList.contains('memo-input') && !String(app.memoDraft || '').trim()) { app.memoAdding = false; app.renderAfterNote = true; }
     if (app.noteTimer) { clearTimeout(app.noteTimer); app.noteTimer = null; L.save(); }
     if (app.renderAfterNote) { app.renderAfterNote = false; setTimeout(render, 0); }
   });

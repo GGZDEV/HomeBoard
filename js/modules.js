@@ -386,7 +386,7 @@ window.HD = window.HD || {};
   const agendaEvents = (events, o) => (o && o.traffic ? events : events.filter((ev) => !isTraffic(ev)));
 
   // Display modes (option "view"), from the densest to the most detailed. "Semaine" needs width 2+.
-  const CAL_VIEWS = [['compact', 'Compact'], ['list', 'Liste'], ['detail', 'Détaillé'], ['week', 'Semaine']];
+  const CAL_VIEWS = [['jours', 'Jours'], ['compact', 'Compact'], ['list', 'Liste'], ['detail', 'Détaillé'], ['week', 'Semaine']];
   const cleanDesc = (s) => String(s || '').replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 220);
   const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -432,11 +432,80 @@ window.HD = window.HD || {};
     return html + (last != null ? '</ul>' : '');
   }
 
+  // "Jours" view (design « Agenda ») : the next days, shaped by the module size.
+  // 1×1 today · x×1 a strip of 7 days · 2+×2 the strip + the upcoming events · else one row per day.
+  // o: { id, w, h, days, loading } → { meta, html }
+  function calDays(events, o) {
+    const w = o.w || 1, h = o.h || 2;
+    const n = Math.min(7, Math.max(1, o.days || 7));
+    const today = startOfDay(new Date());
+    const open = (i) => `data-act="event-open" data-arg="${esc(o.id)}|${i}" data-key="${esc(o.id)}:ev${i}"`;
+    const days = Array.from({ length: n }, (_, k) => {
+      const d0 = new Date(today); d0.setDate(d0.getDate() + k);
+      const d1 = new Date(d0); d1.setDate(d1.getDate() + 1);
+      return { k, d0, dow: cap(d0.toLocaleDateString('fr-FR', { weekday: 'short' }).replace('.', '')), num: d0.getDate(),
+        evs: events.map((ev, i) => [ev, i]).filter(([ev]) => ev.start < d1 && ev.end > d0) };
+    });
+    const busy = days.reduce((s, d) => s + d.evs.length, 0);
+    const span = n === 7 ? '7 prochains jours' : n === 1 ? "Aujourd'hui" : n + ' prochains jours';
+    const free = o.loading ? 'Chargement…' : n === 1 ? 'Journée libre' : 'Semaine libre';
+    const count = busy ? plural(events.length, 'événement', 'événements') : free;
+    const time = (ev, d0) => (ev.allDay || ev.start < d0 ? 'Journée' : hm(ev.start));
+    const cell = (d, cls) => {
+      const dots = d.evs.slice(0, 3).map(([ev]) => `<i style="background: ${ev.color}"></i>`).join('');
+      const inner = `<span class="ag-dow">${esc(d.dow)}</span><span class="ag-num">${d.num}</span>${dots ? `<span class="ag-dots" aria-hidden="true">${dots}</span>` : ''}`;
+      const c2 = `ag-cell${d.k === 0 ? ' is-today' : ''}${cls ? ' ' + cls : ''}`;
+      return d.evs.length ? `<button class="${c2}" ${open(d.evs[0][1])} aria-label="${esc(dayTitle(d.d0) + ' : ' + plural(d.evs.length, 'événement', 'événements'))}">${inner}</button>` : `<div class="${c2}">${inner}</div>`;
+    };
+    const strip = (cls) => `<div class="ag-week${cls ? ' ' + cls : ''}" style="grid-template-columns: repeat(${n}, minmax(0, 1fr))">${days.map((d) => cell(d)).join('')}</div>`;
+    const emptyBlock = `<div class="ag-empty"><span class="empty-ic">${icon(IC.calendar, 24, 1.8)}</span><span class="empty-title">${esc(free)}</span>
+      <span class="muted small">${o.loading ? '' : n === 1 ? "Aucun événement prévu aujourd'hui." : 'Aucun événement prévu sur les ' + span + '.'}</span></div>`;
+
+    // 1×1: today in big, then the next event.
+    if (w === 1 && h === 1) {
+      const next = events.findIndex((ev) => ev.end > new Date());
+      const ev = events[next];
+      const long = cap(today.toLocaleDateString('fr-FR', { weekday: 'long' }));
+      return { meta: '', html: `<div class="ag-today"><span class="ag-dow is-accent">${esc(long)}</span><span class="ag-big">${today.getDate()}</span>
+        ${ev ? `<button class="ag-next" ${open(next)}><b>${esc(startOfDay(ev.start) > today ? dayTitle(ev.start) : time(ev, today))}</b> ${esc(ev.title)}</button>` : `<span class="muted small">${o.loading ? 'Chargement…' : 'Rien de prévu'}</span>`}</div>` };
+    }
+    // x×1: the week as a strip.
+    if (h === 1) return { meta: count, html: strip('is-fill') };
+    // 2+×2: the strip, then the upcoming events (or "Semaine libre").
+    if (w >= 2 && h === 2) {
+      const list = events.slice(0, 12).map((ev, i) => `<li><button class="ag-ev" ${open(i)} style="--cal: ${ev.color}"><span class="cal-dot"></span>
+        <span class="ag-ev-when">${esc(startOfDay(ev.start) > today ? cap(ev.start.toLocaleDateString('fr-FR', { weekday: 'short' }).replace('.', '')) + ' ' + time(ev, startOfDay(ev.start)) : time(ev, today))}</span>
+        <span class="ag-ev-title">${esc(ev.title)}</span></button></li>`).join('');
+      return { meta: busy ? count + ' · ' + span : span, html: strip() + (busy ? `<ul class="ag-evs" data-scroll="${esc(o.id)}:evs">${list}</ul>` : emptyBlock) };
+    }
+    // One row per day: events beside the date (wide) or the first one in short (narrow).
+    const rows = days.map((d) => {
+      const date = `<span class="ag-date"><span class="ag-dow">${esc(d.dow)}</span><span class="ag-num">${d.num}</span></span>`;
+      let body;
+      if (w >= 2) {
+        body = d.evs.length
+          ? `<span class="ag-chips">${d.evs.map(([ev, i]) => `<button class="ag-chip" ${open(i)} style="--cal: ${ev.color}"><span class="ag-chip-time">${esc(time(ev, d.d0))}</span><span class="ag-chip-title">${esc(ev.title)}</span></button>`).join('')}</span>`
+          : `<span class="ag-free">${d.k === 0 ? 'Rien de prévu aujourd’hui' : 'Rien de prévu'}</span>`;
+      } else {
+        const first = d.evs[0];
+        body = first
+          ? `<button class="ag-one" ${open(first[1])} style="--cal: ${first[0].color}"><span class="ag-chip-title">${esc(first[0].title)}</span>${d.evs.length > 1 ? `<span class="muted small">+${d.evs.length - 1}</span>` : ''}</button>`
+          : '<span class="muted small ag-libre">Libre</span>';
+      }
+      return `<li class="ag-row${d.k === 0 ? ' is-today' : ''}">${date}${body}</li>`;
+    }).join('');
+    return { meta: w === 1 ? n + ' jours' : count + ' · ' + span, html: `<ul class="ag-rows" data-scroll="${esc(o.id)}:rows">${rows}</ul>` };
+  }
+
   function calendar(m, list, c) {
     const days = Number(m.options && m.options.days) || 7;
     const data = c.calendar(list, days);
     const events = agendaEvents(calEvents(list, data.raw).filter((ev) => ev.end > new Date()), m.options);
     c.rememberEvents(m.id, events);
+    if (m.options.view === 'jours') {
+      const r = calDays(events, { id: m.id, w: m.w, h: m.h, days, loading: data.loading && !events.length });
+      return head(m.title || 'Agenda', r.meta) + r.html;
+    }
     const legend = list.length > 1 && m.w > 1
       ? list.map((st, i) => `<span class="cal-legend"><i style="background: ${CAL_COLORS[i % CAL_COLORS.length]}"></i>${esc(M.shortName(st))}</span>`).join('') : '';
     const title = m.title || 'Agenda';
@@ -530,39 +599,67 @@ window.HD = window.HD || {};
     if (o.direction) deps = deps.filter((d) => dirOf(d) === o.direction);
     const line = (deps[0] && deps[0].line) || LINES.C01728;
     const badge = `<span class="line-badge" style="background: ${line.color}; color: ${line.fg || '#fff'}" aria-label="${esc(line.mode + ' ' + line.name)}">${esc(line.name)}</span>`;
-    const updated = M.relTime(st.last_updated);
-    const head2 = `<div class="mod-head"><h2 class="row transit-title">${badge}<span>${esc(m.title || (line.mode + ' ' + line.name + ' · ' + M.shortName(st)))}</span></h2>${updated ? `<span class="muted small">Mis à jour ${esc(updated)}</span>` : ''}</div>`;
-    const infos = trafficInfo(m, line, deps, c);
+    const station = M.shortName(st);
+    const w = m.w, h = m.h;
+    const tiny = w === 1 && h === 1;
+    const upd = st.last_updated && isFinite(Date.parse(st.last_updated)) ? 'maj. ' + hm(new Date(st.last_updated)) : '';
+    const head2 = (meta) => `<div class="mod-head"><h2 class="row transit-title">${badge}<span>${esc(m.title || (w === 1 ? station : 'Départs · ' + station))}</span></h2>${meta ? `<span class="muted small">${esc(meta)}</span>` : ''}</div>`;
     if (!deps.length) {
       const noData = !(st.attributes && st.attributes.MonitoredStopVisit);
-      return head2 + infos + `<div class="mod-empty"><p class="muted small">${noData ? "Aucune donnée reçue : vérifiez la clé API IDFM dans Home Assistant." : 'Aucun départ annoncé pour le moment.'}</p></div>`;
+      return head2(tiny ? '' : upd) + (tiny ? '' : trafficInfo(m, line, deps, c)) + `<div class="mod-empty"><span class="empty-ic">${icon(IC.train, 22, 1.8)}</span>
+        <p class="empty-title">${noData ? 'Aucune donnée reçue' : 'Aucun départ'}</p><p class="muted small">${noData ? 'Vérifiez la clé API IDFM dans Home Assistant.' : 'Aucun départ annoncé pour le moment.'}</p></div>`;
     }
-    const max = m.h <= 1 ? 1 : m.h === 2 ? 4 : m.h === 3 ? 6 : 9;
-    const row = (d) => {
-      const mins = Math.max(0, Math.round((d.time - Date.now()) / 60000));
-      const t = new Date(d.time).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-      const late = !d.cancelled && d.delay >= 1;
-      return `<li class="dep${d.cancelled ? ' is-cancelled' : ''}${late ? ' is-late' : ''}">
-        <span class="dep-time"><span class="dep-mins">${d.cancelled ? '—' : mins === 0 ? 'À quai' : mins + ' min'}</span><span class="muted small">${esc(t)}</span></span>
-        <span class="stack grow"><span class="dep-dest">${esc(d.destination || d.direction)}</span>
-          <span class="small dep-info">${d.mission ? `<span class="dep-mission">${esc(d.mission)}</span>` : ''}${d.platform ? `<span>Voie ${esc(d.platform)}</span>` : ''}${d.cancelled ? '<span class="dep-bad">Supprimé</span>' : late ? `<span class="dep-warn">+${d.delay} min</span>` : ''}</span></span>
-      </li>`;
-    };
-    // Wide module without a direction filter: one column per direction.
+    const mins = (d) => Math.max(0, Math.round((d.time - Date.now()) / 60000));
+    const inShort = (d) => { const n = mins(d); return d.cancelled ? '—' : n === 0 ? 'À quai' : n < 60 ? n + ' min' : Math.floor(n / 60) + ' h ' + String(n % 60).padStart(2, '0'); };
+    const time = (d) => hm(new Date(d.time));
+    const late = (d) => !d.cancelled && d.delay >= 1;
+    const status = (d) => (d.cancelled ? 'Supprimé' : late(d) ? 'Retard +' + d.delay + ' min' : 'À l’heure') + (d.platform ? ' · Voie ' + d.platform : '');
+    const stCls = (d) => (d.cancelled || late(d) ? 'dep-st is-warn' : 'dep-st');
+    const dest = (d) => d.destination || d.direction;
+
+    // 1×1: the next train in big.
+    if (tiny) {
+      const next = deps.find((d) => !d.cancelled) || deps[0];
+      const after = deps.find((d) => d !== next && !d.cancelled);
+      return head2('') + `<div class="rer-next"><span class="muted small ell">→ ${esc(dest(next))}</span><span class="rer-big">${esc(inShort(next))}</span>
+        <span class="small ell ${stCls(next)}">${esc(time(next))} · ${esc(status(next))}</span></div>
+        ${after ? `<span class="muted small ell">Puis ${esc(time(after))} → ${esc(dest(after))}</span>` : ''}`;
+    }
+    // x×1: the next departures side by side.
+    if (h === 1) {
+      return head2(upd) + `<div class="rer-cards">${deps.slice(0, w).map((d) => `<div class="rer-card${d.cancelled ? ' is-cancelled' : ''}">
+        <span class="muted small ell">→ ${esc(dest(d))}</span><span class="rer-mid">${esc(inShort(d))}</span>
+        <span class="small ell ${stCls(d)}">${esc(time(d))} · ${esc(status(d))}</span></div>`).join('')}</div>`;
+    }
+    const infos = trafficInfo(m, line, deps, c);
+    const max = h * 3;
+    const row = (d, withDest) => `<li class="dep${d.cancelled ? ' is-cancelled' : ''}">
+        <span class="dep-t">${esc(time(d))}</span>
+        ${withDest ? `<span class="dep-main"><span class="dep-dest">${esc(dest(d))}${d.mission ? ` <span class="dep-mission">${esc(d.mission)}</span>` : ''}</span><span class="small ${stCls(d)}">${esc(status(d))}</span></span>`
+          : `<span class="dep-main"><span class="small ${stCls(d)}">${esc(status(d))}</span></span>`}
+        <span class="dep-pill">${esc(inShort(d))}</span></li>`;
+    // 3+ columns wide without a direction filter: one column per direction.
     const dirs = [...new Set(deps.map(dirOf))];
-    if (!o.direction && m.w >= 2 && dirs.length >= 2) {
-      return head2 + infos + `<div class="dep-cols" style="grid-template-columns: repeat(${Math.min(dirs.length, m.w)}, minmax(0, 1fr))">${dirs.slice(0, m.w).map((dir) =>
-        `<div class="dep-col" data-scroll="${m.id}:${esc(dir)}"><h3 class="cal-day">Vers ${esc(dir)}</h3><ul class="dep-list">${deps.filter((d) => dirOf(d) === dir).slice(0, max).map(row).join('')}</ul></div>`).join('')}</div>`;
+    if (!o.direction && w >= 3 && dirs.length >= 2) {
+      const nc = Math.min(dirs.length, w >= 4 ? 3 : 2);
+      return head2(upd) + infos + `<div class="dep-cols" style="grid-template-columns: repeat(${nc}, minmax(0, 1fr))">${dirs.slice(0, nc).map((dir) =>
+        `<div class="dep-col" data-scroll="${m.id}:${esc(dir)}"><h3 class="dep-sec">Vers ${esc(dir)}</h3><ul class="dep-list">${deps.filter((d) => dirOf(d) === dir).slice(0, max).map((d) => row(d, false)).join('')}</ul></div>`).join('')}</div>`;
     }
-    return head2 + infos + `<ul class="dep-list" data-scroll="${m.id}">${deps.slice(0, max).map(row).join('')}</ul>`;
+    return head2(upd) + infos + `<ul class="dep-list" data-scroll="${m.id}">${deps.slice(0, max).map((d) => row(d, true)).join('')}</ul>`;
   }
 
   // ---------- Notes ----------
   function notes(m) {
     const o = m.options || {};
     const when = o.updated ? M.relTime(new Date(o.updated).toISOString()) : null;
-    return head(m.title || 'Notes', when ? 'Modifiée ' + esc(when) : '') +
-      `<textarea class="note" data-act="note" data-key="${m.id}:note" data-scroll="${m.id}:note" placeholder="Écrire une note… (courses, rappels, code wifi invités)" aria-label="${esc(m.title || 'Notes')}">${esc(o.text || '')}</textarea>`;
+    const text = String(o.text || '');
+    const tiny = m.w === 1 && m.h === 1;
+    // A sheet of paper: bigger type on big sizes, a footer from 3 rows up.
+    const size = tiny ? ' n-tiny' : m.w >= 3 && m.h >= 3 ? ' n-big' : m.h === 1 ? ' n-strip' : '';
+    const lines = text.split('\n').filter((l) => l.trim()).length;
+    return head(m.title || 'Notes', when ? (tiny ? '' : 'Modifiée ') + esc(when) : '') +
+      `<textarea class="note${size}" data-act="note" data-key="${m.id}:note" data-scroll="${m.id}:note" placeholder="Écrire une note… (rappels, code wifi invités)" aria-label="${esc(m.title || 'Notes')}">${esc(text)}</textarea>` +
+      (m.h >= 3 ? `<div class="note-foot"><span>${plural(lines, 'ligne', 'lignes')} · ${plural(text.length, 'caractère', 'caractères')}</span><span>Enregistrement auto</span></div>` : '');
   }
 
   // ---------- Rooms overview ----------
@@ -629,47 +726,68 @@ window.HD = window.HD || {};
     const what = off ? 'Indisponible' : active ? (a.media_title || 'Lecture en cours')
       : srcs.length && !a.source ? 'Choisissez un appareil' : 'Rien en lecture';
     const who = active ? [a.media_artist, a.media_album_name].filter(Boolean).join(' · ') : (spotify ? 'Lancez une playlist ou reprenez la lecture' : M.shortName(st, c.roomName));
-    // Two layouts, after the Spotify app: a compact card (cover beside the title) on small sizes,
-    // the big cover on top from 2×2 (or 1×3) up.
-    const big = (m.w >= 2 && m.h >= 2) || m.h >= 3;
-    const tiny = m.w === 1 && m.h === 1;
-    const controls = `<div class="media-ctrls">
-        ${big ? btn('shuffle', IC.shuffle, a.shuffle ? 'Lecture aléatoire activée' : 'Lecture aléatoire', a.shuffle ? ' is-on' : '') : ''}
-        ${tiny ? '' : btn('prev', IC.prev, 'Précédent')}
-        ${btn('play_pause', playing ? IC.pause : IC.play, playing ? 'Pause' : 'Lecture', ' is-main')}
-        ${btn('next', IC.next, 'Suivant')}
-        ${big ? btn('repeat', IC.repeat, repeat === 'one' ? 'Répéter le titre' : repeat === 'all' ? 'Répéter tout' : 'Répéter', repeat !== 'off' ? ' is-on' + (repeat === 'one' ? ' is-one' : '') : '') : ''}
+    // Layouts of the design « Lecture en cours », by size:
+    // 1×1 cover + play · x×1 cover beside everything · 2×2 compact · wide (3+ cols) cover on the left · else big cover on top.
+    const w = m.w, h = m.h;
+    const tiny = w === 1 && h === 1;
+    const strip = h === 1 && w >= 2;
+    const compact = w === 2 && h === 2;
+    const horizontal = h >= 2 && w >= 3 && h <= w - 1;
+    const vertical = !tiny && !strip && !compact && !horizontal;
+    const extras = horizontal || (vertical && h >= 3); // shuffle / repeat / volume
+    const play = (size) => `<button class="media-play" data-act="media-cmd" data-arg="play_pause" data-key="${k('play_pause')}" aria-label="${playing ? 'Pause' : 'Lecture'}" title="${playing ? 'Pause' : 'Lecture'}" ${off ? 'disabled' : ''} style="--s: ${size}px">${icon(playing ? IC.pause : IC.play, Math.round(size * 0.4), 2.2)}</button>`;
+    const ctrls = (size) => `<div class="media-ctrls">
+        ${extras ? btn('shuffle', IC.shuffle, a.shuffle ? 'Lecture aléatoire activée' : 'Lecture aléatoire', a.shuffle ? ' is-on' : '') : ''}
+        ${btn('prev', IC.prev, 'Morceau précédent')}${play(size)}${btn('next', IC.next, 'Morceau suivant')}
+        ${extras ? btn('repeat', IC.repeat, repeat === 'one' ? 'Répéter le titre' : repeat === 'all' ? 'Répéter tout' : 'Répéter', repeat !== 'off' ? ' is-on' + (repeat === 'one' ? ' is-one' : '') : '') : ''}
       </div>`;
     const vol = a.volume_level != null ? Math.round(Number(a.volume_level) * 100) : null;
-    const img = (cls) => art ? `<img class="${cls}" src="${esc(art)}" alt="" loading="lazy">` : '';
-    const text = `<div class="stack media-text"><span class="media-title">${esc(what)}</span>${who ? `<span class="media-who">${esc(who)}</span>` : ''}</div>`;
-    const progress = `<div class="media-progress${dur ? '' : ' is-empty'}" data-media-pos data-pos="${pos}" data-at="${Date.now()}" data-dur="${dur || 1}" data-playing="${playing && dur ? 1 : 0}">
-      <span class="mp-time" data-cur>${dur ? mmss(pos) : '0:00'}</span>
-      <span class="mp-bar"><i style="width: ${dur ? Math.min(100, (pos / dur) * 100).toFixed(2) : 0}%"></i></span>
-      <span class="mp-time">${dur ? mmss(dur) : '0:00'}</span></div>`;
-    // Speaker picker: an icon, with the (invisible) list of Spotify Connect devices on top of it.
-    const deviceIc = srcs.length
-      ? `<label class="media-ic" title="${esc(a.source || 'Choisir un appareil')}"><span class="sr-only">Appareil de lecture</span>${icon(IC.tv, 18, 1.8)}
-          <select data-act="media-source" data-key="${k('src')}" ${off ? 'disabled' : ''}>
+    const img = art ? `<img src="${esc(art)}" alt="" loading="lazy">` : '';
+    const cover = (style, ic) => `<div class="media-art"${style ? ` style="${style}"` : ''} role="img" aria-label="Pochette">${img || icon(IC.music, ic || 28, 1.6)}</div>`;
+    const text = (cls = '') => `<div class="media-text${cls}"><span class="media-title">${esc(what)}</span>${who ? `<span class="media-who">${esc(who)}</span>` : ''}</div>`;
+    const pct = dur ? Math.min(100, (pos / dur) * 100).toFixed(2) : 0;
+    const posAttrs = `data-media-pos data-pos="${pos}" data-at="${Date.now()}" data-dur="${dur || 1}" data-playing="${playing && dur ? 1 : 0}"`;
+    const bar = `<span class="mp-bar"><i style="width: ${pct}%"></i></span>`;
+    const progress = `<div class="media-progress${dur ? '' : ' is-empty'}" ${posAttrs}>${bar}
+      <span class="mp-times"><span data-cur>${dur ? mmss(pos) : '0:00'}</span><span>${dur ? mmss(dur) : '0:00'}</span></span></div>`;
+    const progressInline = `<div class="media-progress is-inline${dur ? '' : ' is-empty'}" ${posAttrs}><span class="mp-time" data-cur>${dur ? mmss(pos) : '0:00'}</span>${bar}<span class="mp-time">${dur ? mmss(dur) : '0:00'}</span></div>`;
+    // Speaker picker: the device name (or an icon), with the (invisible) list of Spotify Connect devices on top of it.
+    const devName = a.source || (spotify ? 'Choisir un appareil' : M.shortName(st, c.roomName));
+    const picker = (inner, cls) => srcs.length
+      ? `<label class="${cls}" title="${esc(a.source || 'Choisir un appareil')}"><span class="sr-only">Appareil de lecture</span>${inner}
+          <select data-act="media-source" data-key="${k('src' + cls.length)}" ${off ? 'disabled' : ''}>
             ${a.source ? '' : '<option value="">Choisir un appareil…</option>'}
             ${srcs.map((s) => `<option value="${esc(s)}"${s === a.source ? ' selected' : ''}>${esc(s)}</option>`).join('')}
           </select></label>`
-      : `<span class="media-ic is-static" title="${esc(a.source || '')}">${icon(IC.tv, 18, 1.8)}</span>`;
-    const volHtml = vol != null
-      ? `<input class="thin-range" type="range" min="0" max="100" value="${vol}" style="--v: ${vol}%" data-act="media-vol" data-key="${k('vol')}" aria-label="Volume" ${off ? 'disabled' : ''}>`
-      : '<span class="grow"></span>';
+      : `<span class="${cls} is-static">${inner}</span>`;
+    const device = picker(`${icon(IC.tv, 14, 2)}<span>${esc(devName)}</span>`, 'media-dev');
+    const deviceIc = picker(icon(IC.tv, 18, 1.8), 'media-ic');
     const browse = `<button class="media-ic" data-act="media-browse" data-arg="${esc(st.entity_id)}" data-key="${k('browse')}" ${off ? 'disabled' : ''} aria-label="${spotify ? 'Playlists' : 'Bibliothèque'}" title="${spotify ? 'Playlists' : 'Bibliothèque'}">${icon(IC.list, 18, 1.8)}</button>`;
-    const foot = `<div class="media-foot">${deviceIc}${volHtml}${browse}</div>`;
-    const cls = `media-layout${spotify ? ' is-spotify' : ''} ${big ? 'ml-big' : 'ml-card'}${tiny ? ' ml-tiny' : ''}`;
-    if (!big) {
-      return `<div class="${cls}">
-        <div class="media-now"><div class="media-art">${img('fg') || icon(IC.music, 26, 1.8)}</div>${text}${controls}</div>
-        ${progress}${foot}</div>`;
+    const volRow = (withBrowse) => vol != null
+      ? `<div class="media-vol">${icon(IC.volume || 'M11 5 6 9H3v6h3l5 4z M15.5 8.5a5 5 0 0 1 0 7', 18, 1.8)}<input class="thin-range" type="range" min="0" max="100" value="${vol}" style="--v: ${vol}%" data-act="media-vol" data-key="${k('vol')}" aria-label="Volume" ${off ? 'disabled' : ''}>${withBrowse ? browse : ''}</div>`
+      : (withBrowse ? `<div class="media-vol is-end">${browse}</div>` : '');
+    const headHtml = `<div class="mod-head"><h2>${esc(m.title || 'Lecture en cours')}</h2>${device}</div>`;
+    const cls = `media-layout${spotify ? ' is-spotify' : ''}`;
+
+    if (tiny) {
+      return `<div class="${cls} ml-tiny"><div class="ml-row">${cover('', 22)}${play(48)}</div>${text()}
+        <div class="media-progress is-bare" ${posAttrs}>${bar}</div></div>`;
     }
-    return `<div class="${cls}">
-      <div class="media-hero">${img('bg')}${img('fg') || `<span class="media-ph">${icon(IC.music, 40, 1.6)}</span>`}
-        ${spotify ? '<span class="spotify-dot" title="Spotify"></span>' : ''}</div>
-      ${text}${controls}${progress}${foot}</div>`;
+    if (strip) {
+      return `<div class="${cls} ml-strip">${cover('', 40)}<div class="ml-col">
+        <div class="ml-top">${text()}${device}</div>${progressInline}
+        <div class="ml-ctrl-row">${ctrls(48)}${w >= 3 && vol != null ? volRow(false) : ''}</div></div></div>`;
+    }
+    if (compact) {
+      return `<div class="${cls} ml-compact">${headHtml}<div class="ml-now">${cover('', 32)}${text()}</div>${progress}
+        <div class="ml-ctrl-row is-spread">${deviceIc}${ctrls(52)}${browse}</div></div>`;
+    }
+    if (horizontal) {
+      return `<div class="${cls} ml-horiz">${headHtml}<div class="ml-body">${cover('', 48)}<div class="ml-col">
+        ${text(' is-big')}${progress}<div class="ml-ctrl-row">${ctrls(56)}</div>${volRow(true)}</div></div></div>`;
+    }
+    return `<div class="${cls} ml-vert${w === 1 ? ' is-narrow' : ''}">${headHtml}<div class="ml-body">
+      <div class="ml-art-box">${cover('', 48)}</div>${text(' is-center')}${progress}${ctrls(56)}${extras ? volRow(true) : ''}</div></div>`;
   }
 
   // ---------- Home Assistant updates (update.* entities: core, OS, add-ons, HACS, devices) ----------
@@ -799,12 +917,13 @@ window.HD = window.HD || {};
       empty: 'Aucun calendrier dans Home Assistant pour l\'instant. Connectez Google Agenda : Paramètres › Appareils et services › Ajouter une intégration › « Calendrier distant » (adresse iCal secrète) ou « Google Calendar ».',
       pick: dom('calendar'), render: calendar },
     transit: { name: 'Départs train / RER', desc: 'Prochains départs en temps réel (Île-de-France Mobilités) : horaires, retards, quais, missions.', icon: IC.train, w: 2, h: 2, single: true,
-      empty: 'Capteur de départs introuvable. Ajoutez le capteur IDFM dans Home Assistant (fichier homeassistant/rer_d_le_mee.yaml), puis redémarrez-le.',
+      emptyName: 'Départs RER D', emptyTitle: 'Capteur introuvable', emptyCode: 'homeassistant/rer_d_le_mee.yaml', emptyIcon: 'warn',
+      empty: 'Ajoutez le capteur IDFM dans Home Assistant, puis redémarrez-le.',
       pick: (s) => M.domainOf(s.entity_id) === 'sensor' && !!s.attributes.MonitoredStopVisit, render: transit },
-    notes: { name: 'Notes', desc: 'Un mémo libre : liste de courses, rappels, code wifi invités… Enregistré dans votre compte.', icon: IC.note, w: 1, h: 2, noEntities: true, render: notes },
+    notes: { name: 'Notes', desc: 'Un mémo libre : rappels, code wifi invités… Enregistré dans votre compte.', icon: IC.note, w: 1, h: 2, noEntities: true, render: notes },
     automations: { name: 'Automatisations', desc: 'Activer/désactiver les automatisations, lancer les scripts.', icon: IC.robot, w: 2, h: 4,
       pick: (s) => ['automation', 'script'].includes(M.domainOf(s.entity_id)), render: automations },
-    media: { name: 'Spotify / musique', desc: 'Pochette, titre, commandes, volume, choix de l\'enceinte et playlists (Spotify via Home Assistant).', icon: IC.music, w: 2, h: 2, single: true,
+    media: { name: 'Spotify / musique', emptyName: 'Lecture en cours', emptyTitle: 'Aucun lecteur', desc: 'Pochette, titre, commandes, volume, choix de l\'enceinte et playlists (Spotify via Home Assistant).', icon: IC.music, w: 2, h: 2, single: true,
       empty: 'Aucun lecteur multimédia. Ajoutez Spotify dans Home Assistant : Paramètres › Appareils et services › Ajouter une intégration › Spotify (compte Premium nécessaire pour piloter la lecture).',
       auto: isSpotify, pick: dom('media_player'), render: media },
     rooms: { name: 'Pièces', desc: 'Résumé de chaque pièce ; un clic ouvre la pièce.', icon: IC.home, w: 4, h: 2, noEntities: true, render: rooms },
@@ -823,5 +942,5 @@ window.HD = window.HD || {};
     return svg(`<path stroke="#FFFFFF" d="${wxIcon(cond)}"></path>`);
   }
 
-  HD.Modules = { types: T, lightState, TONES, ACCENTS, ZONES, tempThresholds, tempZone, tempColorsOn, wxIcon, wxArt, dayLabel, dailyItems, whenLabel, dayTitle, transitDirections, calEvents, calBody, CAL_VIEWS, isTraffic, agendaEvents, departures, LINES, mediaPos, mmss, isSpotify, updateInfo };
+  HD.Modules = { types: T, lightState, TONES, ACCENTS, ZONES, tempThresholds, tempZone, tempColorsOn, wxIcon, wxArt, dayLabel, dailyItems, whenLabel, dayTitle, transitDirections, calEvents, calBody, calDays, CAL_VIEWS, isTraffic, agendaEvents, departures, LINES, mediaPos, mmss, isSpotify, updateInfo };
 })();
