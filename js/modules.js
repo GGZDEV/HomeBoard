@@ -529,9 +529,21 @@ window.HD = window.HD || {};
   // ---------- Next departures (Île-de-France Mobilités, SIRI Lite via a HA REST sensor) ----------
   // Known lines (referentiel-des-lignes IDFM): badge text and official color.
   const LINES = {
-    C01728: { mode: 'RER', name: 'D', color: '#008b5b' },
+    C01728: { mode: 'RER', name: 'D', color: '#008b5b', ring: '#3DBE78' },
     C01731: { mode: 'Transilien', name: 'R', color: '#f49fb3', fg: '#1c1c1e' }
   };
+  // Platform seen first for each train: a different one later shows "Chgt de voie".
+  const seenPlatforms = new Map();
+  function platformChanged(d) {
+    if (!d.platform) return false;
+    const key = (d.mission || '') + '|' + (d.destination || '') + '|' + Math.round((d.aimed || d.time) / 60000);
+    const now = Date.now();
+    for (const [k, v] of seenPlatforms) if (v.t < now - 3600000) seenPlatforms.delete(k);
+    const first = seenPlatforms.get(key);
+    if (!first) { seenPlatforms.set(key, { p: d.platform, t: d.time }); return false; }
+    first.t = d.time;
+    return first.p !== d.platform;
+  }
   const val = (x) => (Array.isArray(x) ? (x[0] && x[0].value) : x && x.value !== undefined ? x.value : x) || '';
 
   // HACS integration « Ile de France Mobilités » (droso-hass/idfm): one timestamp sensor per next departure
@@ -572,7 +584,7 @@ window.HD = window.HD || {};
         cancelled: status === 'cancelled' || status === 'missed',
         destination: a.destination || '', direction: a.direction || '',
         mission: /^[A-Z]{4}$/.test(String(a.details || '')) ? a.details : '',
-        platform: a.platform || '', line
+        platform: a.platform || '', atStop: !!a.at_stop, line
       };
     }).filter((d) => isFinite(d.time) && d.time > now - 30000).sort((a, b) => a.time - b.time);
   }
@@ -610,13 +622,13 @@ window.HD = window.HD || {};
 
   // Disruptions for the module's line: cancellations / delays within the hour (from the departures)
   // and the traffic events of the HA calendars ("RER D : travaux…"). Each event opens its detail.
-  function trafficInfo(m, line, deps, c, st) {
+  function trafficInfo(m, line, deps, c, st, rowsShowDelays) {
     const out = [];
     const soon = deps.filter((d) => d.time < Date.now() + 3600000);
     const cancelled = soon.filter((d) => d.cancelled).length;
     const maxDelay = Math.max(0, ...soon.filter((d) => !d.cancelled).map((d) => d.delay));
     const delayed = soon.filter((d) => !d.cancelled && d.delayed).length;
-    if (cancelled || maxDelay >= 3 || delayed) {
+    if (!rowsShowDelays && (cancelled || maxDelay >= 3 || delayed)) {
       const what = [cancelled ? plural(cancelled, 'train supprimé', 'trains supprimés') : '', maxDelay >= 3 ? 'retards jusqu\'à +' + maxDelay + ' min' : delayed ? plural(delayed, 'train en retard', 'trains en retard') : ''].filter(Boolean).join(' · ');
       out.push(`<div class="traffic-item is-live">${icon(WARN_PATH, 16, 2)}<span class="stack"><span class="traffic-title">${esc(what)}</span><span class="muted small">Dans l'heure qui vient</span></span></div>`);
     }
@@ -689,21 +701,40 @@ window.HD = window.HD || {};
         <span class="muted small ell">→ ${esc(dest(d))}</span><span class="rer-mid">${esc(inShort(d))}</span>
         <span class="small ell ${stCls(d)}">${esc(time(d))} · ${esc(status(d))}</span></div>`).join('')}</div>`;
     }
-    const infos = trafficInfo(m, line, deps, c, st);
-    const max = h * 3;
-    const row = (d, withDest) => `<li class="dep${d.cancelled ? ' is-cancelled' : ''}">
-        <span class="dep-t">${esc(time(d))}</span>
-        ${withDest ? `<span class="dep-main"><span class="dep-dest">${esc(dest(d))}${d.mission ? ` <span class="dep-mission">${esc(d.mission)}</span>` : ''}</span><span class="small ${stCls(d)}">${esc(status(d))}</span></span>`
-          : `<span class="dep-main"><span class="small ${stCls(d)}">${esc(status(d))}</span></span>`}
-        <span class="dep-pill">${esc(inShort(d))}</span></li>`;
+    // 2 rows and more: a departures board (line ring, mission, destination, minutes, platform on the right).
+    // Each row shows its own delay or cancellation, so the "in the next hour" summary is left out.
+    const infos = trafficInfo(m, line, deps, c, st, true);
+    const max = h * 4;
+    const hasQuai = deps.some((d) => d.platform);
+    const ring = (l) => { const k = l || line; return `<span class="trn-line" style="--line: ${k.ring || k.color}" role="img" aria-label="${esc(k.mode + ' ' + k.name)}">${esc(k.name)}</span>`; };
+    const when = (d) => {
+      const n = mins(d);
+      if (d.cancelled) return '<span class="trn-chip is-bad">Supprimé</span>';
+      if (d.atStop || n === 0) return '<span class="trn-soon">À quai</span>';
+      if (n <= 1) return '<span class="trn-soon">à l’approche</span>';
+      return n < 60 ? `<span class="trn-min"><b>${n}</b> min</span>` : `<span class="trn-min"><b>${Math.floor(n / 60)} h ${String(n % 60).padStart(2, '0')}</b></span>`;
+    };
+    const first = deps.find((d) => !d.cancelled);
+    const row = (d, withDest) => {
+      const moved = platformChanged(d);
+      const chips = (moved && !d.cancelled ? '<span class="trn-chip is-moved">Chgt de voie</span>' : '') +
+        (late(d) && d.delay >= 1 ? `<span class="trn-chip is-late">+${d.delay} min</span>` : late(d) ? '<span class="trn-chip is-late">Retard</span>' : '');
+      const sub = d === first ? `<div class="trn-sub${d.mission ? '' : ' no-mission'}">› Départ ${esc(time(d))}${d.aimed && d.delay >= 1 ? ` (prévu ${esc(hm(new Date(d.aimed)))})` : ''}${d.direction && d.direction !== d.destination ? ' · vers ' + esc(d.direction) : ''}</div>` : '';
+      return `<li class="trn${d === first ? ' is-first' : ''}${d.cancelled ? ' is-cancelled' : ''}${moved ? ' is-moved' : ''}">
+        <div class="trn-body"><div class="trn-main">${ring(d.line)}${d.mission ? `<span class="trn-mission">${esc(d.mission)}</span>` : ''}
+          <span class="trn-dest">${esc(withDest ? dest(d) : time(d))}</span>${chips}${when(d)}</div>${sub}</div>
+        ${hasQuai ? `<span class="trn-quai" aria-label="Voie ${esc(d.platform || 'inconnue')}">${esc(d.platform || '–')}</span>` : ''}</li>`;
+    };
+    const now = hm(new Date());
+    const boardHead = `<div class="mod-head trn-head"><h2 class="row transit-title"><span class="trn-clock">${esc(now)}</span><span class="ell">${esc(m.title || (w === 2 ? 'Prochains trains' : 'Prochains trains · ' + station))}</span></h2>${hasQuai ? '<span class="trn-quai-h">Voie</span>' : ''}</div>`;
     // 3+ columns wide without a direction filter: one column per direction.
     const dirs = [...new Set(deps.map(dirOf))];
     if (!o.direction && w >= 3 && dirs.length >= 2) {
       const nc = Math.min(dirs.length, w >= 4 ? 3 : 2);
-      return head2(upd) + infos + `<div class="dep-cols" style="grid-template-columns: repeat(${nc}, minmax(0, 1fr))">${dirs.slice(0, nc).map((dir) =>
-        `<div class="dep-col" data-scroll="${m.id}:${esc(dir)}"><h3 class="dep-sec">Vers ${esc(dir)}</h3><ul class="dep-list">${deps.filter((d) => dirOf(d) === dir).slice(0, max).map((d) => row(d, false)).join('')}</ul></div>`).join('')}</div>`;
+      return boardHead + infos + `<div class="dep-cols" style="grid-template-columns: repeat(${nc}, minmax(0, 1fr))">${dirs.slice(0, nc).map((dir) =>
+        `<div class="dep-col" data-scroll="${m.id}:${esc(dir)}"><h3 class="dep-sec">Vers ${esc(dir)}</h3><ul class="trn-list">${deps.filter((d) => dirOf(d) === dir).slice(0, max).map((d) => row(d, true)).join('')}</ul></div>`).join('')}</div>`;
     }
-    return head2(upd) + infos + `<ul class="dep-list" data-scroll="${m.id}">${deps.slice(0, max).map((d) => row(d, true)).join('')}</ul>`;
+    return boardHead + infos + `<ul class="trn-list" data-scroll="${m.id}">${deps.slice(0, max).map((d) => row(d, true)).join('')}</ul>`;
   }
 
   // ---------- Notes ----------
