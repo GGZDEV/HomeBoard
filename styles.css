@@ -1008,9 +1008,6 @@ button.ag-cell:hover { background: rgba(255, 255, 255, 0.08); }
 .dep-sec { margin: 0 0 4px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-muted); }
 
 /* Departures board (2 rows and more) */
-.trn-head .transit-title { min-width: 0; }
-.trn-clock { flex: none; font-size: 12px; font-weight: 700; padding: 3px 8px; border-radius: 6px; background: rgba(255, 255, 255, 0.16); font-variant-numeric: tabular-nums; }
-.trn-quai-h { flex: none; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: #fff; color: #141414; }
 .trn-list { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .trn { flex: none; display: flex; align-items: stretch; border-radius: 10px; overflow: hidden; background: rgba(22, 26, 52, 0.78); }
 .trn.is-first { background: #242439; }
@@ -1043,9 +1040,17 @@ button.ag-cell:hover { background: rgba(255, 255, 255, 0.08); }
 .trn.is-narrow .trn-soon { font-size: 12.5px; }
 .trn.is-narrow .trn-quai { width: 32px; font-size: 17px; }
 .trn.is-narrow.is-first .trn-min b { font-size: 22px; }
-.t-transit.w1.h1 .trn-list { flex: none; overflow: hidden; }
-.trn-then { flex: none; padding: 0 2px; font-size: 12.5px; color: #C9CCE0; }
-.trn-then b { color: #fff; font-weight: 700; }
+/* 1×1: three one-line rows sharing the height */
+.trn-list.is-compact { overflow: hidden; gap: 4px; }
+.trn.is-compact { flex: 1 1 0; min-height: 26px; border-radius: 8px; }
+.trn.is-compact .trn-body { min-height: 0; padding: 0 8px; }
+.trn.is-compact .trn-main { gap: 7px; }
+.trn.is-compact .trn-line { width: 18px; height: 18px; font-size: 10px; }
+.trn.is-compact .trn-dest { font-size: 14px; }
+.trn.is-compact .trn-min b { font-size: 16px; }
+.trn.is-compact.is-late .trn-min, .trn.is-compact.is-late .trn-min b { color: #FFD86B; }
+.trn.is-compact .trn-soon { font-size: 12px; }
+.trn.is-compact .trn-quai { width: 30px; font-size: 15px; }
 .trn.is-cancelled .trn-dest, .trn.is-cancelled .trn-mission { text-decoration: line-through; opacity: 0.6; }
 .trn.is-cancelled .trn-quai { opacity: 0.5; }
 .t-transit.h2 .traffic-title { -webkit-line-clamp: 1; }

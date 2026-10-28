@@ -716,7 +716,13 @@ window.HD = window.HD || {};
     const row = (d, withDest) => {
       const moved = platformChanged(d);
       const chips = (moved && !d.cancelled ? '<span class="trn-chip is-moved">Chgt de voie</span>' : '') +
-        (late(d) && d.delay >= 1 ? `<span class="trn-chip is-late">+${d.delay} min</span>` : late(d) ? '<span class="trn-chip is-late">Retard</span>' : '');
+        (late(d) && d.delay >= 1 ? `<span class="trn-chip is-late">+${d.delay}${narrow ? '' : ' min'}</span>` : late(d) ? '<span class="trn-chip is-late">Retard</span>' : '');
+      // 1×1: one line per train, sharing the tile's height.
+      if (tiny) {
+        return `<li class="trn is-compact${d.cancelled ? ' is-cancelled' : ''}${moved ? ' is-moved' : ''}${late(d) ? ' is-late' : ''}">
+        <div class="trn-body"><div class="trn-main">${ring(d.line)}<span class="trn-dest">${esc(dest(d))}</span>${when(d)}</div></div>
+        ${hasQuai ? `<span class="trn-quai" aria-label="Voie ${esc(d.platform || 'inconnue')}">${esc(d.platform || '–')}</span>` : ''}</li>`;
+      }
       if (narrow) {
         return `<li class="trn is-narrow${d === first ? ' is-first' : ''}${d.cancelled ? ' is-cancelled' : ''}${moved ? ' is-moved' : ''}">
         <div class="trn-body"><div class="trn-main">${ring(d.line)}<span class="trn-txt"><span class="trn-dest">${esc(dest(d))}</span>
@@ -729,15 +735,11 @@ window.HD = window.HD || {};
           <span class="trn-dest">${esc(withDest ? dest(d) : time(d))}</span>${chips}${when(d)}</div>${sub}</div>
         ${hasQuai ? `<span class="trn-quai" aria-label="Voie ${esc(d.platform || 'inconnue')}">${esc(d.platform || '–')}</span>` : ''}</li>`;
     };
-    const now = hm(new Date());
-    const boardHead = `<div class="mod-head trn-head"><h2 class="row transit-title"><span class="trn-clock">${esc(now)}</span><span class="ell">${esc(m.title || (narrow ? station : w === 2 ? 'Prochains trains' : 'Prochains trains · ' + station))}</span></h2>${hasQuai ? '<span class="trn-quai-h">Voie</span>' : ''}</div>`;
-    // 1×1: the next train, then one line for the one after.
-    if (tiny) {
-      const next = first || deps[0];
-      const after = deps.find((d) => d !== next && !d.cancelled);
-      return boardHead + `<ul class="trn-list">${row(next, true)}</ul>` +
-        (after ? `<span class="trn-then ell">Puis <b>${esc(inShort(after))}</b> · ${esc(dest(after))}${after.platform ? ' · voie ' + esc(after.platform) : ''}</span>` : '');
-    }
+    // No header: the clock is in the page header and the right column is obviously the platform.
+    // A title the user typed is still shown.
+    const boardHead = m.title ? `<div class="mod-head"><h2>${esc(m.title)}</h2></div>` : '';
+    // 1×1: the next three trains.
+    if (tiny) return boardHead + `<ul class="trn-list is-compact">${deps.slice(0, 3).map((d) => row(d, true)).join('')}</ul>`;
     // 3+ columns wide without a direction filter: one column per direction.
     const dirs = [...new Set(deps.map(dirOf))];
     if (!o.direction && w >= 3 && dirs.length >= 2) {
