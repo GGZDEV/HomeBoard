@@ -1184,7 +1184,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     const ctx = {
       states: app.states, index: app.index, global: !room, roomName: room ? room.name : null,
       targetTemp, roomSummaries, roomOrder, forecast: (st) => forecastFor(st, 'main'),
-      calendar: calendarFor, mediaUrl, updQueue: () => app.updQueue, proxmox: (() => { let v; return () => v || (v = proxmox()); })(),
+      calendar: calendarFor, mediaUrl, cameraUrl, updQueue: () => app.updQueue, proxmox: (() => { let v; return () => v || (v = proxmox()); })(),
       rememberEvents: (id, events) => { app.calEvents = app.calEvents || {}; app.calEvents[id] = events; }
     };
     const body = mods.map((m) => moduleView(m, ctx, e)).join('') +
@@ -1371,6 +1371,30 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
   }
 
   // Pictures from HA (cover art, library thumbnails) are relative to the server; Spotify's are absolute.
+  // Camera picture through Home Assistant. Live = MJPEG stream; still = a picture renewed every 10 s.
+  // The stream keeps the token it started with (HA renews tokens every 5 min): a re-render must not restart it.
+  // A broken picture (network, expired token) is retried with a fresh token a few seconds later.
+  function cameraUrl(st, live) {
+    if (isDemo()) return st.attributes.entity_picture || '';
+    const tok = st.attributes.access_token;
+    if (!tok || !app.conn) return '';
+    const base = app.conn.baseUrl.replace(/\/$/, '');
+    if (!live) return base + '/api/camera_proxy/' + st.entity_id + '?token=' + encodeURIComponent(tok) + '&t=' + Math.floor(Date.now() / 10000);
+    app.camTok = app.camTok || {};
+    const c = app.camTok[st.entity_id];
+    if (!c || c.dead) app.camTok[st.entity_id] = { tok };
+    if (app.camPaused) return '';
+    return base + '/api/camera_proxy_stream/' + st.entity_id + '?token=' + encodeURIComponent(app.camTok[st.entity_id].tok);
+  }
+  function camModal(id) {
+    const st = app.states.get(id);
+    const close = `<span class="grow"></span><button class="btn-solid" data-act="modal-close" data-key="modal-close">Fermer</button>`;
+    if (!st) return modalFrame('Caméra', '<p class="muted">Caméra introuvable.</p>', close);
+    const src = M.isAvail(st) ? cameraUrl(st, true) : '';
+    return modalFrame(HD.Modules.camName(st), src ? `<img class="cam-full" src="${esc(src)}" alt="Image en direct" data-cam="${esc(id)}">` : '<p class="muted">Caméra hors ligne.</p>', close)
+      .replace('class="glass modal"', 'class="glass modal is-cam"');
+  }
+
   function mediaUrl(u) {
     if (!u || /^(https?:|data:)/.test(u) || !app.conn || isDemo()) return u || '';
     return app.conn.baseUrl.replace(/\/$/, '') + u;
@@ -1420,6 +1444,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     const md = app.modal;
     let title, body, foot;
     if (md.kind === 'weather') return weatherModal(md.entity);
+    if (md.kind === 'camera') return camModal(md.entity);
     if (md.kind === 'event') return eventModal(md.ev);
     if (md.kind === 'media') return mediaModal(md);
     if (md.kind === 'bg') return bgModal();
@@ -1576,6 +1601,9 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
           }).join('')}${pick ? '<button type="button" class="link-btn" data-act="draft-rooms-all" data-key="rp-all">Toutes</button>' : ''}</div>
           <p class="muted small">L'ordre suit celui des Réglages › Pièces. Les nouvelles pièces s'ajoutent seules tant que « toutes » sont cochées.</p>`;
         })() : ''}
+        ${d.type === 'camera' ? `<div class="field-row"><span class="field-label">Image</span>${seg('draft-cam-mode', d.options.mode || '', [['', 'En direct'], ['still', 'Toutes les 10 s']])}</div>
+          <div class="field-row"><span class="field-label">Cadrage</span>${seg('draft-cam-fit', d.options.fit || '', [['', 'Remplir le module'], ['contain', 'Image entière']])}</div>
+          <p class="muted small">« Toutes les 10 s » ménage le réseau et Home Assistant. Le direct se met en pause quand l'écran est éteint.</p>` : ''}
         ${d.type === 'home-notes' ? (() => {
           const cur = md.memoList !== undefined ? md.memoList : (memoList() || 'local');
           const opts = [['local', 'Ce tableau de bord']].concat(todoIds().map((id) => [id, esc(M.shortName(app.states.get(id))) + (isBring(id) ? ' (Bring!)' : '')]));
@@ -1939,6 +1967,9 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     'draft-tempcolors'() { const o = app.modal.draft.options; o.tempColors = !HD.Modules.tempColorsOn(o); render(); },
     'mod-colors'(arg, el) { openConfig(el.closest('[data-mod]').dataset.mod, 'colors'); },
     'weather-open'(arg) { app.modal = { kind: 'weather', entity: arg }; render(); },
+    'camera-open'(arg) { app.modal = { kind: 'camera', entity: arg }; render(); },
+    'draft-cam-mode'(arg) { if (arg) app.modal.draft.options.mode = arg; else delete app.modal.draft.options.mode; render(); },
+    'draft-cam-fit'(arg) { if (arg) app.modal.draft.options.fit = arg; else delete app.modal.draft.options.fit; render(); },
     'event-open'(arg) {
       const [mod, idx] = arg.split('|');
       const ev = app.calEvents && app.calEvents[mod] && app.calEvents[mod][Number(idx)];
@@ -2542,6 +2573,23 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
   const retrySoon = () => { if (app.conn && app.conn.retryNow && app.status === 'reconnecting') app.conn.retryNow(); };
   window.addEventListener('online', retrySoon);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) retrySoon(); });
+  // Cameras: no stream while the screen is off or the tab hidden; back on when visible again.
+  document.addEventListener('visibilitychange', () => {
+    app.camPaused = document.hidden;
+    if (document.hidden) $app.querySelectorAll('img[data-cam]').forEach((img) => img.removeAttribute('src'));
+    else queueRender();
+  });
+  // A broken camera picture: fresh token and retry a bit later.
+  $app.addEventListener('error', (e) => {
+    const img = e.target;
+    if (!img || img.tagName !== 'IMG' || !img.dataset.cam || !img.getAttribute('src')) return;
+    const c = app.camTok && app.camTok[img.dataset.cam];
+    if (c) c.dead = true;
+    clearTimeout(app.camRetry);
+    app.camRetry = setTimeout(queueRender, 5000);
+  }, true);
+  // Still pictures: redraw every 10 s (the URL changes with the time slot).
+  setInterval(() => { if (!document.hidden && $app.querySelector('.t-camera .cam-img') && !app.camPaused) queueRender(); }, 10000);
 
   document.documentElement.style.setProperty('--accent', L.data.accent);
   connectSaved();

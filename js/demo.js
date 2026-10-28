@@ -89,6 +89,8 @@ HD.DemoConnection = class DemoConnection {
       S('calendar.famille', 'off', { friendly_name: 'Famille', message: 'Piscine Léa' }),
       S('calendar.travail', 'off', { friendly_name: 'Travail', message: 'Point équipe' }),
       S('calendar.info_trafic', 'on', { friendly_name: 'Info trafic', message: 'RER D : travaux' }),
+      S('camera.camoly_vue_en_direct', 'idle', { friendly_name: 'CamOly Vue en direct', access_token: 'demo',
+        entity_picture: 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6d7a86"/><stop offset="1" stop-color="#2f3540"/></linearGradient></defs><rect width="640" height="360" fill="url(#g)"/><rect x="60" y="210" width="240" height="110" rx="10" fill="#8a6f5a"/><rect x="380" y="60" width="160" height="120" fill="#c9d6e0" opacity=".55"/><circle cx="470" cy="270" r="40" fill="#e9c46a" opacity=".8"/><text x="20" y="345" fill="#fff" font-family="monospace" font-size="16" opacity=".8">2026-10-28 12:16:37</text></svg>') }, 'chambre'),
       Object.assign(S('todo.courses', '3', { friendly_name: 'Courses', supported_features: 15 }), { platform: 'bring' }),
       S('automation.lever_stores', 'on', { friendly_name: 'Ouvrir les stores au lever du soleil', last_triggered: ago(9) }),
       S('automation.extinction', 'on', { friendly_name: 'Tout éteindre à minuit', last_triggered: ago(15) }),

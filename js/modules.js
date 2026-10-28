@@ -896,6 +896,21 @@ window.HD = window.HD || {};
       `<ul class="pve-guests" data-scroll="${m.id}">${guests.map(row).join('') || '<li class="muted small">Aucune VM ni conteneur.</li>'}</ul>`;
   }
 
+  // "CamOly Vue en direct" -> "CamOly" (the badge already says it is live).
+  const camName = (st) => M.shortName(st).replace(/\s*[-·]?\s*(vue en direct|live view|live|flux)$/i, '') || M.shortName(st);
+  // Camera (Tapo…): the live picture fills the card, name and "En direct" on top. Touch = full screen.
+  function camera(m, list, c) {
+    const st = list[0];
+    const name = m.title || camName(st);
+    const live = m.options.mode !== 'still';
+    const src = M.isAvail(st) && c.cameraUrl ? c.cameraUrl(st, live) : '';
+    const fit = m.options.fit === 'contain' ? ' is-contain' : '';
+    return `<div class="cam" role="button" tabindex="0" data-act="camera-open" data-arg="${esc(st.entity_id)}" data-key="${m.id}:cam" aria-label="${esc(name)}, plein écran">
+      ${src ? `<img class="cam-img${fit}" src="${esc(src)}" alt="" data-cam="${esc(st.entity_id)}">` : `<span class="cam-off">${icon(IC.camera, 28, 1.8)}<span>${M.isAvail(st) ? 'Image indisponible' : 'Caméra hors ligne'}</span></span>`}
+      <span class="cam-bar"><span class="cam-name">${esc(name)}</span>${src ? `<span class="cam-live${live ? '' : ' is-still'}">${live ? '<i></i>En direct' : 'Toutes les 10 s'}</span>` : ''}</span>
+    </div>`;
+  }
+
   // ---------- catalog ----------
   // auto: entities picked automatically within the scope; pick: what the picker offers.
   const T = {
@@ -926,6 +941,9 @@ window.HD = window.HD || {};
     media: { name: 'Spotify / musique', emptyName: 'Lecture en cours', emptyTitle: 'Aucun lecteur', desc: 'Pochette, titre, commandes, volume, choix de l\'enceinte et playlists (Spotify via Home Assistant).', icon: IC.music, w: 2, h: 2, single: true,
       empty: 'Aucun lecteur multimédia. Ajoutez Spotify dans Home Assistant : Paramètres › Appareils et services › Ajouter une intégration › Spotify (compte Premium nécessaire pour piloter la lecture).',
       auto: isSpotify, pick: dom('media_player'), render: media },
+    camera: { name: 'Caméra', desc: 'L\'image en direct d\'une caméra (Tapo…) ; touchez-la pour le plein écran.', icon: IC.camera, w: 2, h: 2, single: true,
+      empty: 'Aucune caméra dans Home Assistant. Ajoutez-la (par exemple TP-Link Smart Home pour une Tapo), elle apparaîtra ici.',
+      pick: dom('camera'), render: camera },
     rooms: { name: 'Pièces', desc: 'Résumé de chaque pièce ; un clic ouvre la pièce.', icon: IC.home, w: 4, h: 2, noEntities: true, render: rooms },
     updates: { name: 'Mises à jour', desc: 'Home Assistant, système, modules complémentaires, HACS, appareils : versions et installation.', icon: IC.download, w: 2, h: 4, allStates: true,
       empty: 'Aucune entité de mise à jour trouvée dans Home Assistant.', pick: dom('update'), render: updates },
@@ -942,5 +960,5 @@ window.HD = window.HD || {};
     return svg(`<path stroke="#FFFFFF" d="${wxIcon(cond)}"></path>`);
   }
 
-  HD.Modules = { types: T, lightState, TONES, ACCENTS, ZONES, tempThresholds, tempZone, tempColorsOn, wxIcon, wxArt, dayLabel, dailyItems, whenLabel, dayTitle, transitDirections, calEvents, calBody, calDays, CAL_VIEWS, isTraffic, agendaEvents, departures, LINES, mediaPos, mmss, isSpotify, updateInfo };
+  HD.Modules = { types: T, lightState, TONES, ACCENTS, ZONES, tempThresholds, tempZone, tempColorsOn, wxIcon, wxArt, dayLabel, dailyItems, whenLabel, dayTitle, transitDirections, calEvents, calBody, calDays, camName, CAL_VIEWS, isTraffic, agendaEvents, departures, LINES, mediaPos, mmss, isSpotify, updateInfo };
 })();
