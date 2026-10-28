@@ -435,32 +435,17 @@ window.HD = window.HD || {};
 
   // "Jours" view (design « Agenda ») : the next days, shaped by the module size.
   // 1×1 today · x×1 a strip of 7 days · 2+×2 the strip + the upcoming events · else one row per day.
-  // o: { id, w, h, days, loading } → { meta, html }
+  // With o.pages > 1 the week is one page of a side scroller (swipe, wheel or drag): 7 days per page,
+  // the header shows the week on screen (app.js keeps it in sync with the scroll position).
+  // o: { id, w, h, days, pages, loading } → { meta, html }
   function calDays(events, o) {
     const w = o.w || 1, h = o.h || 2;
     const n = Math.min(7, Math.max(1, o.days || 7));
     const today = startOfDay(new Date());
     const open = (i) => `data-act="event-open" data-arg="${esc(o.id)}|${i}" data-key="${esc(o.id)}:ev${i}"`;
-    const days = Array.from({ length: n }, (_, k) => {
-      const d0 = new Date(today); d0.setDate(d0.getDate() + k);
-      const d1 = new Date(d0); d1.setDate(d1.getDate() + 1);
-      return { k, d0, dow: cap(d0.toLocaleDateString('fr-FR', { weekday: 'short' }).replace('.', '')), num: d0.getDate(),
-        evs: events.map((ev, i) => [ev, i]).filter(([ev]) => ev.start < d1 && ev.end > d0) };
-    });
-    const busy = days.reduce((s, d) => s + d.evs.length, 0);
-    const span = n === 7 ? '7 prochains jours' : n === 1 ? "Aujourd'hui" : n + ' prochains jours';
-    const free = o.loading ? 'Chargement…' : n === 1 ? 'Journée libre' : 'Semaine libre';
-    const count = busy ? plural(events.length, 'événement', 'événements') : free;
+    const dow = (d) => cap(d.toLocaleDateString('fr-FR', { weekday: 'short' }).replace('.', ''));
     const time = (ev, d0) => (ev.allDay || ev.start < d0 ? 'Journée' : hm(ev.start));
-    const cell = (d, cls) => {
-      const dots = d.evs.slice(0, 3).map(([ev]) => `<i style="background: ${ev.color}"></i>`).join('');
-      const inner = `<span class="ag-dow">${esc(d.dow)}</span><span class="ag-num">${d.num}</span>${dots ? `<span class="ag-dots" aria-hidden="true">${dots}</span>` : ''}`;
-      const c2 = `ag-cell${d.k === 0 ? ' is-today' : ''}${cls ? ' ' + cls : ''}`;
-      return d.evs.length ? `<button class="${c2}" ${open(d.evs[0][1])} aria-label="${esc(dayTitle(d.d0) + ' : ' + plural(d.evs.length, 'événement', 'événements'))}">${inner}</button>` : `<div class="${c2}">${inner}</div>`;
-    };
-    const strip = (cls) => `<div class="ag-week${cls ? ' ' + cls : ''}" style="grid-template-columns: repeat(${n}, minmax(0, 1fr))">${days.map((d) => cell(d)).join('')}</div>`;
-    const emptyBlock = `<div class="ag-empty"><span class="empty-ic">${icon(IC.calendar, 24, 1.8)}</span><span class="empty-title">${esc(free)}</span>
-      <span class="muted small">${o.loading ? '' : n === 1 ? "Aucun événement prévu aujourd'hui." : 'Aucun événement prévu sur les ' + span + '.'}</span></div>`;
+    const free = o.loading ? 'Chargement…' : n === 1 ? 'Journée libre' : 'Semaine libre';
 
     // 1×1: today in big, then the next event.
     if (w === 1 && h === 1) {
@@ -470,42 +455,92 @@ window.HD = window.HD || {};
       return { meta: '', html: `<div class="ag-today"><span class="ag-dow is-accent">${esc(long)}</span><span class="ag-big">${today.getDate()}</span>
         ${ev ? `<button class="ag-next" ${open(next)}><b>${esc(startOfDay(ev.start) > today ? dayTitle(ev.start) : time(ev, today))}</b> ${esc(ev.title)}</button>` : `<span class="muted small">${o.loading ? 'Chargement…' : 'Rien de prévu'}</span>`}</div>` };
     }
-    // x×1: the week as a strip.
-    if (h === 1) return { meta: count, html: strip('is-fill') };
-    // 2+×2: the strip, then the upcoming events (or "Semaine libre").
-    if (w >= 2 && h === 2) {
-      const list = events.slice(0, 12).map((ev, i) => `<li><button class="ag-ev" ${open(i)} style="--cal: ${ev.color}"><span class="cal-dot"></span>
-        <span class="ag-ev-when">${esc(startOfDay(ev.start) > today ? cap(ev.start.toLocaleDateString('fr-FR', { weekday: 'short' }).replace('.', '')) + ' ' + time(ev, startOfDay(ev.start)) : time(ev, today))}</span>
-        <span class="ag-ev-title">${esc(ev.title)}</span></button></li>`).join('');
-      return { meta: busy ? count + ' · ' + span : span, html: strip() + (busy ? `<ul class="ag-evs" data-scroll="${esc(o.id)}:evs">${list}</ul>` : emptyBlock) };
+
+    const pages = n === 7 ? Math.max(1, o.pages || 1) : 1;
+    // One page = n days from today + 7×p.
+    const page = (p) => {
+      const days = Array.from({ length: n }, (_, j) => {
+        const k = p * 7 + j;
+        const d0 = new Date(today); d0.setDate(d0.getDate() + k);
+        const d1 = new Date(d0); d1.setDate(d1.getDate() + 1);
+        return { k, d0, dow: dow(d0), num: d0.getDate(), evs: events.map((ev, i) => [ev, i]).filter(([ev]) => ev.start < d1 && ev.end > d0) };
+      });
+      const first = days[0].d0, last = days[n - 1].d0;
+      const end = new Date(last); end.setDate(end.getDate() + 1);
+      const evIdx = events.map((ev, i) => [ev, i]).filter(([ev]) => ev.start < end && ev.end > first);
+      const busy = days.reduce((s, d) => s + d.evs.length, 0);
+      const fmt = (d, month) => d.getDate() + (month ? ' ' + d.toLocaleDateString('fr-FR', { month: 'short' }) : '');
+      const span = p === 0 ? (n === 7 ? '7 prochains jours' : n === 1 ? "Aujourd'hui" : n + ' prochains jours')
+        : 'Du ' + fmt(first, first.getMonth() !== last.getMonth()) + ' au ' + fmt(last, true);
+      const count = busy ? plural(evIdx.length, 'événement', 'événements') : free;
+      return { p, days, evIdx, busy, span, count };
+    };
+    const all = Array.from({ length: pages }, (_, p) => page(p));
+    const cell = (d) => {
+      const dots = d.evs.slice(0, 3).map(([ev]) => `<i style="background: ${ev.color}"></i>`).join('');
+      const inner = `<span class="ag-dow">${esc(d.dow)}</span><span class="ag-num">${d.num}</span>${dots ? `<span class="ag-dots" aria-hidden="true">${dots}</span>` : ''}`;
+      const c2 = `ag-cell${d.k === 0 ? ' is-today' : ''}`;
+      return d.evs.length ? `<button class="${c2}" ${open(d.evs[0][1])} aria-label="${esc(dayTitle(d.d0) + ' : ' + plural(d.evs.length, 'événement', 'événements'))}">${inner}</button>` : `<div class="${c2}">${inner}</div>`;
+    };
+    const strip = (pg, cls) => `<div class="ag-week${cls ? ' ' + cls : ''}" style="grid-template-columns: repeat(${n}, minmax(0, 1fr))">${pg.days.map((d) => cell(d)).join('')}</div>`;
+    const emptyBlock = (pg) => `<div class="ag-empty"><span class="empty-ic">${icon(IC.calendar, 24, 1.8)}</span><span class="empty-title">${esc(free)}</span>
+      <span class="muted small">${o.loading ? '' : n === 1 ? "Aucun événement prévu aujourd'hui." : pg.p === 0 ? 'Aucun événement prévu sur les ' + pg.span + '.' : 'Aucun événement prévu ' + pg.span.replace(/^Du/, 'du') + '.'}</span></div>`;
+    const sfx = (pg) => (pages > 1 ? ':' + pg.p : '');
+
+    let meta, body;
+    if (h === 1) {
+      // x×1: the week as a strip.
+      meta = (pg) => (pg.p === 0 ? pg.count : pg.count + ' · ' + pg.span);
+      body = (pg) => strip(pg, 'is-fill');
+    } else if (w >= 2 && h === 2) {
+      // 2+×2: the strip, then the events of that week (or "Semaine libre").
+      meta = (pg) => (pg.busy ? pg.count + ' · ' + pg.span : pg.span);
+      body = (pg) => {
+        const list = pg.evIdx.slice(0, 20).map(([ev, i]) => `<li><button class="ag-ev" ${open(i)} style="--cal: ${ev.color}"><span class="cal-dot"></span>
+          <span class="ag-ev-when">${esc(startOfDay(ev.start) > today ? dow(ev.start) + (pg.p > 0 ? ' ' + ev.start.getDate() : '') + ' ' + time(ev, startOfDay(ev.start)) : time(ev, today))}</span>
+          <span class="ag-ev-title">${esc(ev.title)}</span></button></li>`).join('');
+        return strip(pg) + (pg.busy ? `<ul class="ag-evs" data-scroll="${esc(o.id)}:evs${sfx(pg)}">${list}</ul>` : emptyBlock(pg));
+      };
+    } else {
+      // One row per day: events beside the date (wide) or the first one in short (narrow).
+      meta = (pg) => (w === 1 ? (pg.p === 0 ? n + ' jours' : pg.span) : pg.count + ' · ' + pg.span);
+      body = (pg) => `<ul class="ag-rows" data-scroll="${esc(o.id)}:rows${sfx(pg)}">${pg.days.map((d) => {
+        const date = `<span class="ag-date"><span class="ag-dow">${esc(d.dow)}</span><span class="ag-num">${d.num}</span></span>`;
+        let inner;
+        if (w >= 2) {
+          inner = d.evs.length
+            ? `<span class="ag-chips">${d.evs.map(([ev, i]) => `<button class="ag-chip" ${open(i)} style="--cal: ${ev.color}"><span class="ag-chip-time">${esc(time(ev, d.d0))}</span><span class="ag-chip-title">${esc(ev.title)}</span></button>`).join('')}</span>`
+            : `<span class="ag-free">${d.k === 0 ? 'Rien de prévu aujourd’hui' : 'Rien de prévu'}</span>`;
+        } else {
+          const first = d.evs[0];
+          inner = first
+            ? `<button class="ag-one" ${open(first[1])} style="--cal: ${first[0].color}"><span class="ag-chip-title">${esc(first[0].title)}</span>${d.evs.length > 1 ? `<span class="muted small">+${d.evs.length - 1}</span>` : ''}</button>`
+            : '<span class="muted small ag-libre">Libre</span>';
+        }
+        return `<li class="ag-row${d.k === 0 ? ' is-today' : ''}">${date}${inner}</li>`;
+      }).join('')}</ul>`;
     }
-    // One row per day: events beside the date (wide) or the first one in short (narrow).
-    const rows = days.map((d) => {
-      const date = `<span class="ag-date"><span class="ag-dow">${esc(d.dow)}</span><span class="ag-num">${d.num}</span></span>`;
-      let body;
-      if (w >= 2) {
-        body = d.evs.length
-          ? `<span class="ag-chips">${d.evs.map(([ev, i]) => `<button class="ag-chip" ${open(i)} style="--cal: ${ev.color}"><span class="ag-chip-time">${esc(time(ev, d.d0))}</span><span class="ag-chip-title">${esc(ev.title)}</span></button>`).join('')}</span>`
-          : `<span class="ag-free">${d.k === 0 ? 'Rien de prévu aujourd’hui' : 'Rien de prévu'}</span>`;
-      } else {
-        const first = d.evs[0];
-        body = first
-          ? `<button class="ag-one" ${open(first[1])} style="--cal: ${first[0].color}"><span class="ag-chip-title">${esc(first[0].title)}</span>${d.evs.length > 1 ? `<span class="muted small">+${d.evs.length - 1}</span>` : ''}</button>`
-          : '<span class="muted small ag-libre">Libre</span>';
-      }
-      return `<li class="ag-row${d.k === 0 ? ' is-today' : ''}">${date}${body}</li>`;
-    }).join('');
-    return { meta: w === 1 ? n + ' jours' : count + ' · ' + span, html: `<ul class="ag-rows" data-scroll="${esc(o.id)}:rows">${rows}</ul>` };
+    if (pages === 1) return { meta: meta(all[0]), html: body(all[0]) };
+    // Side scroller: one page per week, snapped; the dots under it say which week is on screen.
+    const dots = all.map((pg) => `<button type="button" data-pg="${pg.p}" class="${pg.p === 0 ? 'is-on' : ''}" aria-label="${esc(pg.span)}"></button>`).join('');
+    return { meta: meta(all[0]), html: `<div class="ag-pager${h === 1 ? ' is-fill' : ''}" data-scroll="${esc(o.id)}:weeks" data-pager aria-label="Semaines : faire défiler sur le côté">${all.map((pg) =>
+      `<div class="ag-page" data-meta="${esc(meta(pg))}" aria-label="${esc(pg.span)}">${body(pg)}</div>`).join('')}</div>` +
+      (h >= 2 ? `<div class="ag-pdots">${dots}</div>` : '') };
   }
+
+  // Weeks shown side by side by the "Jours" view (4, or more for a longer period), and the days to read for them.
+  const calPages = (view, days) => (view === 'jours' && days >= 7 ? Math.max(4, Math.ceil(days / 7)) : 1);
+  const calFetchDays = (view, days) => Math.max(days, calPages(view, days) * 7);
 
   function calendar(m, list, c) {
     const days = Number(m.options && m.options.days) || 7;
-    const data = c.calendar(list, days);
+    const pages = calPages(m.options.view, days);
+    const data = c.calendar(list, calFetchDays(m.options.view, days));
     const events = agendaEvents(calEvents(list, data.raw).filter((ev) => ev.end > new Date()), m.options);
     c.rememberEvents(m.id, events);
     if (m.options.view === 'jours' || (!events.length && !data.loading && !data.error)) {
-      const r = calDays(events, { id: m.id, w: m.w, h: m.h, days, loading: data.loading && !events.length });
-      return head(m.title || 'Agenda', r.meta) + r.html;
+      const r = calDays(events, { id: m.id, w: m.w, h: m.h, days, pages: m.options.view === 'jours' ? pages : 1, loading: data.loading && !events.length });
+      return head(m.title || 'Agenda', esc(r.meta)) + r.html;
     }
     const legend = list.length > 1 && m.w > 1
       ? list.map((st, i) => `<span class="cal-legend"><i style="background: ${CAL_COLORS[i % CAL_COLORS.length]}"></i>${esc(M.shortName(st))}</span>`).join('') : '';
@@ -1062,5 +1097,5 @@ window.HD = window.HD || {};
     return svg(`<path stroke="#FFFFFF" d="${wxIcon(cond)}"></path>`);
   }
 
-  HD.Modules = { types: T, lightState, TONES, ACCENTS, ZONES, tempThresholds, tempZone, tempColorsOn, wxIcon, wxArt, dayLabel, dailyItems, whenLabel, dayTitle, transitDirections, calEvents, calBody, calDays, camName, CAL_VIEWS, isTraffic, agendaEvents, departures, LINES, mediaPos, mmss, isSpotify, updateInfo };
+  HD.Modules = { types: T, lightState, TONES, ACCENTS, ZONES, tempThresholds, tempZone, tempColorsOn, wxIcon, wxArt, dayLabel, dailyItems, whenLabel, dayTitle, transitDirections, calEvents, calBody, calDays, calPages, calFetchDays, camName, CAL_VIEWS, isTraffic, agendaEvents, departures, LINES, mediaPos, mmss, isSpotify, updateInfo };
 })();

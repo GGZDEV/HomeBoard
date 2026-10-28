@@ -257,6 +257,7 @@
     fitRows(); // before restoring scroll positions, which depend on row heights
     // A list keeps its position; one that now shows something else starts at the top.
     $app.querySelectorAll('[data-scroll]').forEach((el) => { const v = scrollers[el.dataset.scroll] || 0; if (Math.abs(el.scrollTop - v) > 1) el.scrollTop = v; });
+    restorePagers();
     updateFades();
     if (focusKey) {
       const el = $app.querySelector(`[data-key="${CSS.escape(focusKey)}"]`);
@@ -289,7 +290,101 @@
     });
   }
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => fitWeather());
-  $app.addEventListener('scroll', (e) => { if (e.target.dataset && e.target.dataset.scroll) fade(e.target); }, true);
+  $app.addEventListener('scroll', (e) => {
+    const t = e.target;
+    if (!t.dataset || !t.dataset.scroll) return;
+    fade(t);
+    if (t.hasAttribute('data-pager')) app.pagers[t.dataset.scroll] = { i: pagerSync(t), at: Date.now() };
+  }, true);
+
+  // ---------- Agenda weeks ("Jours" view): one page per week, scrolled sideways with snap ----------
+  // Finger: native swipe. Mouse: drag, or the wheel over the days; the dots under the week jump to one.
+  // The week on screen survives re-renders; after 2 min untouched the agenda comes back to this week.
+  app.pagers = {}; // data-scroll key → { i: page index, at: last scroll time }
+  const pagerPages = (el) => [...el.children].filter((c) => c.classList.contains('ag-page'));
+  function pagerIndex(el) {
+    const pages = pagerPages(el);
+    if (!pages.length) return 0;
+    let best = 0, dist = Infinity;
+    pages.forEach((p, i) => { const d = Math.abs(p.offsetLeft - pages[0].offsetLeft - el.scrollLeft); if (d < dist) { dist = d; best = i; } });
+    return best;
+  }
+  function pagerGo(el, i, smooth) {
+    const pages = pagerPages(el);
+    if (!pages.length) return 0;
+    i = Math.max(0, Math.min(pages.length - 1, i));
+    const left = pages[i].offsetLeft - pages[0].offsetLeft;
+    if (Math.abs(el.scrollLeft - left) > 1) el.scrollTo({ left, behavior: smooth ? 'smooth' : 'auto' });
+    return i;
+  }
+  // The header and the dots follow the week on screen.
+  function pagerSync(el) {
+    const i = pagerIndex(el);
+    const page = pagerPages(el)[i];
+    const card = el.closest('.hero-card, .mod');
+    const meta = card && card.querySelector('.mod-head > .muted');
+    if (meta && page && meta.textContent !== page.dataset.meta) meta.textContent = page.dataset.meta;
+    const dots = el.nextElementSibling && el.nextElementSibling.classList.contains('ag-pdots') ? [...el.nextElementSibling.children] : [];
+    dots.forEach((d, k) => { d.classList.toggle('is-on', k === i); d.setAttribute('aria-current', k === i ? 'true' : 'false'); });
+    return i;
+  }
+  function restorePagers() {
+    $app.querySelectorAll('[data-pager]').forEach((el) => {
+      const st = app.pagers[el.dataset.scroll];
+      if (st && st.i > 0 && Date.now() - st.at > 120000 && !el.matches(':hover')) { st.i = 0; st.at = Date.now(); pagerGo(el, 0, true); }
+      // A pager drawn anew (other page, other view) goes back to its week; one kept in place already is there.
+      else if (!el._placed && st) pagerGo(el, st.i, false);
+      el._placed = true;
+      pagerSync(el);
+    });
+  }
+  $app.addEventListener('wheel', (e) => {
+    const el = e.target.closest && e.target.closest('[data-pager]');
+    if (!el || app.editing || e.ctrlKey || Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return; // sideways: native
+    // A list of the week that can scroll keeps the wheel.
+    for (let n = e.target; n && n !== el; n = n.parentElement) {
+      if (n.scrollHeight > n.clientHeight + 2 && /auto|scroll/.test(getComputedStyle(n).overflowY)) return;
+    }
+    const i = pagerIndex(el), to = i + (e.deltaY > 0 ? 1 : -1);
+    if (to < 0 || to >= pagerPages(el).length) return; // first / last week: the page scrolls on
+    e.preventDefault();
+    if (Date.now() - (el._wheelAt || 0) < 450) return; // one week per wheel move
+    el._wheelAt = Date.now();
+    pagerGo(el, to, true);
+  }, { passive: false });
+  let pdrag = null, pdragClick = false;
+  $app.addEventListener('pointerdown', (e) => {
+    if (e.pointerType !== 'mouse' || e.button !== 0 || app.editing) return;
+    const el = e.target.closest('[data-pager]');
+    if (el) pdrag = { el, pid: e.pointerId, x0: e.clientX, left0: el.scrollLeft, i0: pagerIndex(el), moved: false };
+  });
+  document.addEventListener('pointermove', (e) => {
+    if (!pdrag || e.pointerId !== pdrag.pid) return;
+    const dx = e.clientX - pdrag.x0;
+    if (!pdrag.moved && Math.abs(dx) < 6) return;
+    if (!pdrag.moved) { pdrag.moved = true; pdrag.el.classList.add('is-dragging'); }
+    pdrag.el.scrollLeft = pdrag.left0 - dx;
+  });
+  function pdragEnd(e) {
+    if (!pdrag || e.pointerId !== pdrag.pid) return;
+    const d = pdrag;
+    pdrag = null;
+    if (!d.moved) return;
+    const dx = e.clientX - d.x0;
+    pagerGo(d.el, d.i0 + (Math.abs(dx) > 40 ? (dx < 0 ? 1 : -1) : 0), true);
+    setTimeout(() => d.el.classList.remove('is-dragging'), 450); // snapping back on once the week is in place
+    pdragClick = true;
+    setTimeout(() => { pdragClick = false; }, 0);
+  }
+  document.addEventListener('pointerup', pdragEnd);
+  document.addEventListener('pointercancel', pdragEnd);
+  $app.addEventListener('click', (e) => {
+    if (pdragClick) { e.stopPropagation(); e.preventDefault(); return; } // a drag is not a click
+    const dot = e.target.closest('.ag-pdots > [data-pg]');
+    if (!dot) return;
+    const el = dot.parentElement.previousElementSibling;
+    if (el && el.hasAttribute('data-pager')) pagerGo(el, Number(dot.dataset.pg), true);
+  }, true);
   // Size grid rows from the space really available, so 4 rows = exactly the visible height:
   // a height-4 module is never cut off, whatever the screen. Stacked (phone) layout: natural heights.
   const STACKED = '(max-width: 860px), (max-height: 620px)';
@@ -955,7 +1050,8 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
     const days = Number(o.days) || 7;
     const id = m ? m.id : 'hero-agenda';
     const cals = allStates().filter((s) => M.domainOf(s.entity_id) === 'calendar');
-    const data = cals.length ? calendarFor(cals, days) : { raw: {} };
+    const view = o.view || 'jours';
+    const data = cals.length ? calendarFor(cals, W.calFetchDays(view, days)) : { raw: {} };
     // Traffic info ("RER D : …") belongs to the train module: hidden here unless asked for.
     const events = W.agendaEvents(W.calEvents(cals, data.raw).filter((ev) => ev.end > new Date()), o);
     app.calEvents = app.calEvents || {};
@@ -967,7 +1063,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
         return `<section class="card hero-card hero-agenda" aria-label="Agenda"><div class="mod-head"><h2>${title}</h2></div>
           <div class="mod-empty"><span class="empty-ic">${icon(IC.calendar, 22, 1.8)}</span><p class="muted small">Aucun calendrier : connectez Google Agenda dans Home Assistant (« Calendrier distant » ou « Google Calendar »).</p></div></section>`;
       }
-      const r = W.calDays(events, { id, w: m ? m.w : 1, h: m ? m.h : 2, days, loading: data.loading && !events.length });
+      const r = W.calDays(events, { id, w: m ? m.w : 1, h: m ? m.h : 2, days, pages: W.calPages(view, days), loading: data.loading && !events.length });
       const tiny = m && m.w === 1 && m.h === 1;
       return `<section class="card hero-card hero-agenda ag-${tiny ? 'tiny' : 'n'}" aria-label="Agenda">
         <div class="mod-head"><h2>${title}</h2>${r.meta ? `<span class="muted small">${esc(r.meta)}</span>` : ''}</div>${r.html}</section>`;

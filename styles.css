@@ -954,6 +954,15 @@ button.ag-cell:hover { background: rgba(255, 255, 255, 0.08); }
 .ag-one { margin-left: auto; min-width: 0; display: flex; align-items: center; gap: 6px; border: none; background: none; padding: 0; color: var(--fg); font: inherit; }
 .ag-one::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--cal); flex: none; }
 .ag-libre { margin-left: auto; }
+.ag-pager { flex: 1; min-height: 0; display: flex; gap: inherit; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; touch-action: pan-x pan-y; }
+.ag-pager::-webkit-scrollbar { display: none; }
+.ag-pager.is-fill .ag-cell { padding: 4px 0; gap: 3px; }
+.ag-pager.is-dragging { scroll-snap-type: none; cursor: grabbing; user-select: none; }
+.ag-page { flex: 0 0 100%; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: inherit; scroll-snap-align: start; scroll-snap-stop: always; }
+.ag-pdots { flex: none; display: flex; justify-content: center; gap: 2px; margin-top: -10px; margin-bottom: -6px; }
+.ag-pdots > button { width: 22px; height: 16px; padding: 0; border: none; background: none; display: grid; place-items: center; }
+.ag-pdots > button::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: rgba(255, 255, 255, 0.22); transition: width 0.2s, background 0.2s; }
+.ag-pdots > button.is-on::before { width: 16px; border-radius: 3px; background: var(--accent); }
 
 /* ----- Courses (checklist) ----- */
 .hero-notes { gap: 16px; }

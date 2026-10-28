@@ -354,7 +354,10 @@ HD.DemoConnection = class DemoConnection {
         E('Piscine Léa', { dateTime: at(0, 17, 30) }, { dateTime: at(0, 18, 30) }, { location: 'Centre aquatique' }),
         E('Anniversaire de Mamie', { date: day(2) }, { date: day(3) }, { description: 'Apporter le gâteau au chocolat.' }),
         E('Dîner chez les Martin', { dateTime: at(3, 20, 0) }, { dateTime: at(3, 23, 0) }, { location: '12 rue des Lilas' }),
-        E('Vacances de la Toussaint', { date: day(5) }, { date: day(12) })
+        E('Vacances de la Toussaint', { date: day(5) }, { date: day(12) }),
+        E('Dentiste Léa', { dateTime: at(9, 16, 30) }, { dateTime: at(9, 17, 0) }, { location: 'Cabinet du Dr Roux' }),
+        E('Réunion parents-profs', { dateTime: at(16, 18, 30) }, { dateTime: at(16, 20, 0) }, { location: 'École Jules Ferry' }),
+        E('Week-end à la mer', { date: day(20) }, { date: day(22) })
       ],
       'calendar.info_trafic': [
         E('RER D : travaux entre Corbeil-Essonnes et Melun, bus de remplacement', { dateTime: at(0, 0, 0) }, { dateTime: at(1, 5, 0) }),
@@ -363,7 +366,8 @@ HD.DemoConnection = class DemoConnection {
       'calendar.travail': [
         E('Point équipe', { dateTime: at(0, 9, 30) }, { dateTime: at(0, 10, 0) }, { location: 'Visio' }),
         E('Rendez-vous client', { dateTime: at(1, 14, 0) }, { dateTime: at(1, 15, 30) }, { location: 'Lyon', description: 'Présentation du devis.\nPrévoir 30 min de trajet.' }),
-        E('Revue trimestrielle', { dateTime: at(4, 10, 0) }, { dateTime: at(4, 12, 0) })
+        E('Revue trimestrielle', { dateTime: at(4, 10, 0) }, { dateTime: at(4, 12, 0) }),
+        E('Séminaire à Bordeaux', { dateTime: at(24, 9, 0) }, { dateTime: at(24, 17, 0) }, { location: 'Bordeaux' })
       ]
     };
     const items = (all[entityId] || []).filter((ev) => {
