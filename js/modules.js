@@ -351,7 +351,8 @@ window.HD = window.HD || {};
         out.push({
           cal: st.entity_id, calName: M.shortName(st), color: CAL_COLORS[i % CAL_COLORS.length],
           title: ev.summary || '(Sans titre)', start, end, allDay: !!(ev.start && ev.start.date && !ev.start.dateTime),
-          location: ev.location || '', description: ev.description || ''
+          location: ev.location || '', description: ev.description || '',
+          idfm: /^idfm_/i.test(String(st.attributes.friendly_name || '')) // disruptions calendar of the IDFM integration
         });
       }
     });
@@ -382,7 +383,7 @@ window.HD = window.HD || {};
   // the train module shows them; agendas hide them unless the module asks for them (option "traffic").
   const WARN_PATH = 'M12 3 2 20h20z M12 10v4 M12 17v.5';
   const TRAFFIC_RE = /^\s*(RER|Ligne|Transilien|Trains?|TER|M[ée]tro|Tram|Bus)\b[^:]{0,24}:/i;
-  const isTraffic = (ev) => TRAFFIC_RE.test(ev.title);
+  const isTraffic = (ev) => !!ev.idfm || TRAFFIC_RE.test(ev.title);
   const agendaEvents = (events, o) => (o && o.traffic ? events : events.filter((ev) => !isTraffic(ev)));
 
   // Display modes (option "view"), from the densest to the most detailed. "Semaine" needs width 2+.
@@ -533,8 +534,52 @@ window.HD = window.HD || {};
   };
   const val = (x) => (Array.isArray(x) ? (x[0] && x[0].value) : x && x.value !== undefined ? x.value : x) || '';
 
+  // HACS integration « Ile de France Mobilités » (droso-hass/idfm): one timestamp sensor per next departure
+  // (attributes destination, direction, at_stop, platform, status, details = mission), plus a "problem" binary sensor.
+  const isIdfmTime = (s) => !!s && M.domainOf(s.entity_id) === 'sensor' && !!s.attributes && 'at_stop' in s.attributes && 'destination' in s.attributes;
+  const isIdfmInfo = (s) => !!s && M.domainOf(s.entity_id) === 'binary_sensor' && !!s.attributes && 'effect' in s.attributes && 'severity' in s.attributes;
+  // Entities of the same integration entry (same device): by the registry, else by the entity id without "_N".
+  function idfmGroup(st, c, test) {
+    const reg = c && c.index && c.index.reg;
+    const dev = reg && reg.get(st.entity_id) ? reg.get(st.entity_id).device_id : null;
+    const stem = st.entity_id.replace(/_\d+$/, '');
+    const out = [];
+    for (const s of (c && c.states ? c.states.values() : [])) {
+      if (!test(s)) continue;
+      const d = reg && reg.get(s.entity_id) ? reg.get(s.entity_id).device_id : null;
+      if (dev ? d === dev : s.entity_id.replace(/_\d+$/, '') === stem) out.push(s);
+    }
+    return out.length ? out : [st];
+  }
+  // "idfm_Le Mée - Le Mée-sur-Seine -> Goussainville #0" -> "Le Mée"
+  const idfmStation = (st) => String(st.attributes.friendly_name || st.entity_id).replace(/^idfm_/i, '').replace(/\s*->.*$/, '').replace(/\s*#\d+$/, '').split(' - ')[0].trim();
+  // Line from the device name ("D - Le Mée - …"), else RER D.
+  function idfmLine(st, c) {
+    const reg = c && c.index && c.index.reg;
+    const r = reg && reg.get(st.entity_id);
+    const dev = r && r.device_id && c.index.devices ? c.index.devices.get(r.device_id) : null;
+    const n = dev ? String(dev.name_by_user || dev.name || '').split(' - ')[0].trim().toUpperCase() : '';
+    return Object.values(LINES).find((l) => l.name === n) || null;
+  }
+  function idfmDepartures(st, c) {
+    const now = Date.now();
+    const line = idfmLine(st, c);
+    return idfmGroup(st, c, isIdfmTime).map((s) => {
+      const a = s.attributes;
+      const status = String(a.status || '').toLowerCase();
+      return {
+        time: Date.parse(s.state), aimed: null, delay: 0, delayed: status === 'delayed',
+        cancelled: status === 'cancelled' || status === 'missed',
+        destination: a.destination || '', direction: a.direction || '',
+        mission: /^[A-Z]{4}$/.test(String(a.details || '')) ? a.details : '',
+        platform: a.platform || '', line
+      };
+    }).filter((d) => isFinite(d.time) && d.time > now - 30000).sort((a, b) => a.time - b.time);
+  }
+
   // SIRI MonitoredStopVisit -> { time, aimed, delay, cancelled, destination, direction, mission, platform, line }
-  function departures(st) {
+  function departures(st, c) {
+    if (isIdfmTime(st)) return idfmDepartures(st, c);
     const visits = (st && st.attributes && st.attributes.MonitoredStopVisit) || [];
     const now = Date.now();
     return visits.map((v) => {
@@ -559,20 +604,32 @@ window.HD = window.HD || {};
   }
 
   // Directions seen in the data, for the module's direction filter.
-  function transitDirections(st) {
-    return [...new Set(departures(st).map((d) => d.direction || d.destination).filter(Boolean))];
+  function transitDirections(st, c) {
+    return [...new Set(departures(st, c).map((d) => d.direction || d.destination).filter(Boolean))];
   }
 
   // Disruptions for the module's line: cancellations / delays within the hour (from the departures)
   // and the traffic events of the HA calendars ("RER D : travaux…"). Each event opens its detail.
-  function trafficInfo(m, line, deps, c) {
+  function trafficInfo(m, line, deps, c, st) {
     const out = [];
     const soon = deps.filter((d) => d.time < Date.now() + 3600000);
     const cancelled = soon.filter((d) => d.cancelled).length;
     const maxDelay = Math.max(0, ...soon.filter((d) => !d.cancelled).map((d) => d.delay));
-    if (cancelled || maxDelay >= 3) {
-      const what = [cancelled ? plural(cancelled, 'train supprimé', 'trains supprimés') : '', maxDelay >= 3 ? 'retards jusqu\'à +' + maxDelay + ' min' : ''].filter(Boolean).join(' · ');
+    const delayed = soon.filter((d) => !d.cancelled && d.delayed).length;
+    if (cancelled || maxDelay >= 3 || delayed) {
+      const what = [cancelled ? plural(cancelled, 'train supprimé', 'trains supprimés') : '', maxDelay >= 3 ? 'retards jusqu\'à +' + maxDelay + ' min' : delayed ? plural(delayed, 'train en retard', 'trains en retard') : ''].filter(Boolean).join(' · ');
       out.push(`<div class="traffic-item is-live">${icon(WARN_PATH, 16, 2)}<span class="stack"><span class="traffic-title">${esc(what)}</span><span class="muted small">Dans l'heure qui vient</span></span></div>`);
+    }
+    // IDFM integration: the disruption in progress at this stop (its "problem" sensor).
+    if (st && isIdfmTime(st)) {
+      const station = idfmStation(st).toLowerCase();
+      const mine = (s) => isIdfmInfo(s) && String(s.attributes.friendly_name || '').toLowerCase().includes(station);
+      const reg = c.index && c.index.reg;
+      (reg && reg.get(st.entity_id) ? idfmGroup(st, c, isIdfmInfo) : [...c.states.values()].filter(mine)).filter((s) => s.state === 'on' && s.attributes.description && s !== st).slice(0, 2).forEach((s) => {
+        const a = s.attributes;
+        const end = Date.parse(a.end_time || '');
+        out.push(`<div class="traffic-item">${icon(WARN_PATH, 16, 2)}<span class="stack"><span class="traffic-title">${esc(String(a.description).replace(/\s+/g, ' ').slice(0, 300))}</span><span class="muted small">${isFinite(end) ? 'Jusqu\'à ' + esc(dayTitle(new Date(end)).toLowerCase()) + ' ' + hm(new Date(end)) : 'En cours'}</span></span></div>`);
+      });
     }
     const cals = c.index ? [...c.index.visible].map((id) => c.states.get(id)).filter((s) => s && M.domainOf(s.entity_id) === 'calendar') : [];
     if (cals.length && c.calendar) {
@@ -594,26 +651,27 @@ window.HD = window.HD || {};
   function transit(m, list, c) {
     const st = list[0];
     const o = m.options || {};
-    let deps = departures(st);
+    let deps = departures(st, c);
     const dirOf = (d) => d.direction || d.destination;
     if (o.direction) deps = deps.filter((d) => dirOf(d) === o.direction);
-    const line = (deps[0] && deps[0].line) || LINES.C01728;
+    const idfm = isIdfmTime(st);
+    const line = (deps[0] && deps[0].line) || (idfm && idfmLine(st, c)) || LINES.C01728;
     const badge = `<span class="line-badge" style="background: ${line.color}; color: ${line.fg || '#fff'}" aria-label="${esc(line.mode + ' ' + line.name)}">${esc(line.name)}</span>`;
-    const station = M.shortName(st);
+    const station = idfm ? idfmStation(st) : M.shortName(st);
     const w = m.w, h = m.h;
     const tiny = w === 1 && h === 1;
     const upd = st.last_updated && isFinite(Date.parse(st.last_updated)) ? 'maj. ' + hm(new Date(st.last_updated)) : '';
     const head2 = (meta) => `<div class="mod-head"><h2 class="row transit-title">${badge}<span>${esc(m.title || (w === 1 ? station : 'Départs · ' + station))}</span></h2>${meta ? `<span class="muted small">${esc(meta)}</span>` : ''}</div>`;
     if (!deps.length) {
-      const noData = !(st.attributes && st.attributes.MonitoredStopVisit);
-      return head2(tiny ? '' : upd) + (tiny ? '' : trafficInfo(m, line, deps, c)) + `<div class="mod-empty"><span class="empty-ic">${icon(IC.train, 22, 1.8)}</span>
-        <p class="empty-title">${noData ? 'Aucune donnée reçue' : 'Aucun départ'}</p><p class="muted small">${noData ? 'Vérifiez la clé API IDFM dans Home Assistant.' : 'Aucun départ annoncé pour le moment.'}</p></div>`;
+      const noData = idfm ? idfmGroup(st, c, isIdfmTime).every((s) => !M.isAvail(s) || s.state === 'unknown') : !(st.attributes && st.attributes.MonitoredStopVisit);
+      return head2(tiny ? '' : upd) + (tiny ? '' : trafficInfo(m, line, deps, c, st)) + `<div class="mod-empty"><span class="empty-ic">${icon(IC.train, 22, 1.8)}</span>
+        <p class="empty-title">${noData && !idfm ? 'Aucune donnée reçue' : 'Aucun départ'}</p><p class="muted small">${noData && !idfm ? 'Vérifiez la clé API IDFM dans Home Assistant.' : 'Aucun départ annoncé pour le moment.'}</p></div>`;
     }
     const mins = (d) => Math.max(0, Math.round((d.time - Date.now()) / 60000));
     const inShort = (d) => { const n = mins(d); return d.cancelled ? '—' : n === 0 ? 'À quai' : n < 60 ? n + ' min' : Math.floor(n / 60) + ' h ' + String(n % 60).padStart(2, '0'); };
     const time = (d) => hm(new Date(d.time));
-    const late = (d) => !d.cancelled && d.delay >= 1;
-    const status = (d) => (d.cancelled ? 'Supprimé' : late(d) ? 'Retard +' + d.delay + ' min' : 'À l’heure') + (d.platform ? ' · Voie ' + d.platform : '');
+    const late = (d) => !d.cancelled && (d.delay >= 1 || d.delayed);
+    const status = (d) => (d.cancelled ? 'Supprimé' : late(d) ? 'Retard' + (d.delay >= 1 ? ' +' + d.delay + ' min' : '') : 'À l’heure') + (d.platform ? ' · Voie ' + d.platform : '');
     const stCls = (d) => (d.cancelled || late(d) ? 'dep-st is-warn' : 'dep-st');
     const dest = (d) => d.destination || d.direction;
 
@@ -631,7 +689,7 @@ window.HD = window.HD || {};
         <span class="muted small ell">→ ${esc(dest(d))}</span><span class="rer-mid">${esc(inShort(d))}</span>
         <span class="small ell ${stCls(d)}">${esc(time(d))} · ${esc(status(d))}</span></div>`).join('')}</div>`;
     }
-    const infos = trafficInfo(m, line, deps, c);
+    const infos = trafficInfo(m, line, deps, c, st);
     const max = h * 3;
     const row = (d, withDest) => `<li class="dep${d.cancelled ? ' is-cancelled' : ''}">
         <span class="dep-t">${esc(time(d))}</span>
@@ -933,8 +991,8 @@ window.HD = window.HD || {};
       pick: dom('calendar'), render: calendar },
     transit: { name: 'Départs train / RER', desc: 'Prochains départs en temps réel (Île-de-France Mobilités) : horaires, retards, quais, missions.', icon: IC.train, w: 2, h: 2, single: true,
       emptyName: 'Départs RER D', emptyTitle: 'Capteur introuvable', emptyCode: 'homeassistant/rer_d_le_mee.yaml', emptyIcon: 'warn',
-      empty: 'Ajoutez le capteur IDFM dans Home Assistant, puis redémarrez-le.',
-      pick: (s) => M.domainOf(s.entity_id) === 'sensor' && !!s.attributes.MonitoredStopVisit, render: transit },
+      empty: 'Ajoutez l\'intégration « Ile de France Mobilités » (HACS) ou le capteur IDFM dans Home Assistant.',
+      pick: (s) => M.domainOf(s.entity_id) === 'sensor' && (!!s.attributes.MonitoredStopVisit || (isIdfmTime(s) && /(_0|#0)$/.test(s.entity_id + ' ' + (s.attributes.friendly_name || '')))), render: transit },
     notes: { name: 'Notes', desc: 'Un mémo libre : rappels, code wifi invités… Enregistré dans votre compte.', icon: IC.note, w: 1, h: 2, noEntities: true, render: notes },
     automations: { name: 'Automatisations', desc: 'Activer/désactiver les automatisations, lancer les scripts.', icon: IC.robot, w: 2, h: 4,
       pick: (s) => ['automation', 'script'].includes(M.domainOf(s.entity_id)), render: automations },
