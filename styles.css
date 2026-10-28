@@ -1032,6 +1032,20 @@ button.ag-cell:hover { background: rgba(255, 255, 255, 0.08); }
 .trn-sub.no-mission { padding-left: 29px; }
 .trn-quai { width: 36px; flex: none; background: #fff; color: #141414; font-size: 20px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
 .trn.is-moved .trn-quai { background: #F26B21; color: #fff; }
+/* One column wide: destination on top, mission and time below */
+.trn.is-narrow .trn-body, .trn.is-narrow.is-first .trn-body { padding: 6px 8px; min-height: 44px; }
+.trn.is-narrow .trn-main { gap: 8px; }
+.trn-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.trn.is-narrow .trn-dest { flex: none; font-size: 15px; }
+.trn-meta { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; white-space: nowrap; font-size: 11.5px; color: #C9CCE0; font-variant-numeric: tabular-nums; }
+.trn.is-narrow .trn-mission { width: auto; font-size: 12px; letter-spacing: 0.5px; }
+.trn.is-narrow .trn-min b { font-size: 18px; }
+.trn.is-narrow .trn-soon { font-size: 12.5px; }
+.trn.is-narrow .trn-quai { width: 32px; font-size: 17px; }
+.trn.is-narrow.is-first .trn-min b { font-size: 22px; }
+.t-transit.w1.h1 .trn-list { flex: none; overflow: hidden; }
+.trn-then { flex: none; padding: 0 2px; font-size: 12.5px; color: #C9CCE0; }
+.trn-then b { color: #fff; font-weight: 700; }
 .trn.is-cancelled .trn-dest, .trn.is-cancelled .trn-mission { text-decoration: line-through; opacity: 0.6; }
 .trn.is-cancelled .trn-quai { opacity: 0.5; }
 .t-transit.h2 .traffic-title { -webkit-line-clamp: 1; }

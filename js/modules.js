@@ -622,13 +622,15 @@ window.HD = window.HD || {};
 
   // Disruptions for the module's line: cancellations / delays within the hour (from the departures)
   // and the traffic events of the HA calendars ("RER D : travaux…"). Each event opens its detail.
-  function trafficInfo(m, line, deps, c, st, rowsShowDelays) {
+  // opts.rowsShowDelays: leave out the "in the next hour" summary; opts.limit: at most that many items.
+  function trafficInfo(m, line, deps, c, st, opts = {}) {
     const out = [];
+    let hidden = 0;
     const soon = deps.filter((d) => d.time < Date.now() + 3600000);
     const cancelled = soon.filter((d) => d.cancelled).length;
     const maxDelay = Math.max(0, ...soon.filter((d) => !d.cancelled).map((d) => d.delay));
     const delayed = soon.filter((d) => !d.cancelled && d.delayed).length;
-    if (!rowsShowDelays && (cancelled || maxDelay >= 3 || delayed)) {
+    if (!opts.rowsShowDelays && (cancelled || maxDelay >= 3 || delayed)) {
       const what = [cancelled ? plural(cancelled, 'train supprimé', 'trains supprimés') : '', maxDelay >= 3 ? 'retards jusqu\'à +' + maxDelay + ' min' : delayed ? plural(delayed, 'train en retard', 'trains en retard') : ''].filter(Boolean).join(' · ');
       out.push(`<div class="traffic-item is-live">${icon(WARN_PATH, 16, 2)}<span class="stack"><span class="traffic-title">${esc(what)}</span><span class="muted small">Dans l'heure qui vient</span></span></div>`);
     }
@@ -655,8 +657,10 @@ window.HD = window.HD || {};
         out.push(`<button class="traffic-item" data-act="event-open" data-arg="${esc(m.id)}:traffic|${i}" data-key="${m.id}:tr${i}">${icon(WARN_PATH, 16, 2)}
           <span class="stack"><span class="traffic-title">${esc(ev.title.replace(TRAFFIC_RE, '').trim() || ev.title)}</span><span class="muted small">${esc(whenLabel(ev))}</span></span></button>`);
       });
-      if (evs.length > max) out.push(`<span class="muted small traffic-more">+ ${plural(evs.length - max, 'autre info trafic', 'autres infos trafic')}</span>`);
+      hidden += Math.max(0, evs.length - max);
     }
+    if (opts.limit && out.length > opts.limit) { hidden += out.length - opts.limit; out.length = opts.limit; }
+    if (hidden) out.push(`<span class="muted small traffic-more">+ ${plural(hidden, 'autre info trafic', 'autres infos trafic')}</span>`);
     return out.length ? `<div class="traffic">${out.join('')}</div>` : '';
   }
 
@@ -687,23 +691,17 @@ window.HD = window.HD || {};
     const stCls = (d) => (d.cancelled || late(d) ? 'dep-st is-warn' : 'dep-st');
     const dest = (d) => d.destination || d.direction;
 
-    // 1×1: the next train in big.
-    if (tiny) {
-      const next = deps.find((d) => !d.cancelled) || deps[0];
-      const after = deps.find((d) => d !== next && !d.cancelled);
-      return head2('') + `<div class="rer-next"><span class="muted small ell">→ ${esc(dest(next))}</span><span class="rer-big">${esc(inShort(next))}</span>
-        <span class="small ell ${stCls(next)}">${esc(time(next))} · ${esc(status(next))}</span></div>
-        ${after ? `<span class="muted small ell">Puis ${esc(time(after))} → ${esc(dest(after))}</span>` : ''}`;
-    }
     // x×1: the next departures side by side.
-    if (h === 1) {
+    if (h === 1 && !tiny) {
       return head2(upd) + `<div class="rer-cards">${deps.slice(0, w).map((d) => `<div class="rer-card${d.cancelled ? ' is-cancelled' : ''}">
         <span class="muted small ell">→ ${esc(dest(d))}</span><span class="rer-mid">${esc(inShort(d))}</span>
         <span class="small ell ${stCls(d)}">${esc(time(d))} · ${esc(status(d))}</span></div>`).join('')}</div>`;
     }
-    // 2 rows and more: a departures board (line ring, mission, destination, minutes, platform on the right).
+    // 1×1 and 2 rows and more: a departures board (line ring, mission, destination, minutes, platform on the right).
     // Each row shows its own delay or cancellation, so the "in the next hour" summary is left out.
-    const infos = trafficInfo(m, line, deps, c, st, true);
+    // One column wide: one traffic item at most (none in 1×1), mission and time under the destination.
+    const narrow = w === 1;
+    const infos = tiny ? '' : trafficInfo(m, line, deps, c, st, { rowsShowDelays: true, limit: narrow ? 1 : 0 });
     const max = h * 4;
     const hasQuai = deps.some((d) => d.platform);
     const ring = (l) => { const k = l || line; return `<span class="trn-line" style="--line: ${k.ring || k.color}" role="img" aria-label="${esc(k.mode + ' ' + k.name)}">${esc(k.name)}</span>`; };
@@ -719,6 +717,12 @@ window.HD = window.HD || {};
       const moved = platformChanged(d);
       const chips = (moved && !d.cancelled ? '<span class="trn-chip is-moved">Chgt de voie</span>' : '') +
         (late(d) && d.delay >= 1 ? `<span class="trn-chip is-late">+${d.delay} min</span>` : late(d) ? '<span class="trn-chip is-late">Retard</span>' : '');
+      if (narrow) {
+        return `<li class="trn is-narrow${d === first ? ' is-first' : ''}${d.cancelled ? ' is-cancelled' : ''}${moved ? ' is-moved' : ''}">
+        <div class="trn-body"><div class="trn-main">${ring(d.line)}<span class="trn-txt"><span class="trn-dest">${esc(dest(d))}</span>
+          <span class="trn-meta">${d.mission ? `<span class="trn-mission">${esc(d.mission)}</span>` : `<span>${esc(time(d))}</span>`}${chips}</span></span>${when(d)}</div></div>
+        ${hasQuai ? `<span class="trn-quai" aria-label="Voie ${esc(d.platform || 'inconnue')}">${esc(d.platform || '–')}</span>` : ''}</li>`;
+      }
       const sub = d === first ? `<div class="trn-sub${d.mission ? '' : ' no-mission'}">› Départ ${esc(time(d))}${d.aimed && d.delay >= 1 ? ` (prévu ${esc(hm(new Date(d.aimed)))})` : ''}${d.direction && d.direction !== d.destination ? ' · vers ' + esc(d.direction) : ''}</div>` : '';
       return `<li class="trn${d === first ? ' is-first' : ''}${d.cancelled ? ' is-cancelled' : ''}${moved ? ' is-moved' : ''}">
         <div class="trn-body"><div class="trn-main">${ring(d.line)}${d.mission ? `<span class="trn-mission">${esc(d.mission)}</span>` : ''}
@@ -726,7 +730,14 @@ window.HD = window.HD || {};
         ${hasQuai ? `<span class="trn-quai" aria-label="Voie ${esc(d.platform || 'inconnue')}">${esc(d.platform || '–')}</span>` : ''}</li>`;
     };
     const now = hm(new Date());
-    const boardHead = `<div class="mod-head trn-head"><h2 class="row transit-title"><span class="trn-clock">${esc(now)}</span><span class="ell">${esc(m.title || (w === 2 ? 'Prochains trains' : 'Prochains trains · ' + station))}</span></h2>${hasQuai ? '<span class="trn-quai-h">Voie</span>' : ''}</div>`;
+    const boardHead = `<div class="mod-head trn-head"><h2 class="row transit-title"><span class="trn-clock">${esc(now)}</span><span class="ell">${esc(m.title || (narrow ? station : w === 2 ? 'Prochains trains' : 'Prochains trains · ' + station))}</span></h2>${hasQuai ? '<span class="trn-quai-h">Voie</span>' : ''}</div>`;
+    // 1×1: the next train, then one line for the one after.
+    if (tiny) {
+      const next = first || deps[0];
+      const after = deps.find((d) => d !== next && !d.cancelled);
+      return boardHead + `<ul class="trn-list">${row(next, true)}</ul>` +
+        (after ? `<span class="trn-then ell">Puis <b>${esc(inShort(after))}</b> · ${esc(dest(after))}${after.platform ? ' · voie ' + esc(after.platform) : ''}</span>` : '');
+    }
     // 3+ columns wide without a direction filter: one column per direction.
     const dirs = [...new Set(deps.map(dirOf))];
     if (!o.direction && w >= 3 && dirs.length >= 2) {
