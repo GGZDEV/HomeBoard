@@ -642,7 +642,7 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
       }
       case 'transit': {
         const st = list[0];
-        const d = st ? W.departures(st, { states: app.states, index: app.index }).find((x) => !x.cancelled && x.time > Date.now() - 60000) : null;
+        const d = st ? W.departures(list, { states: app.states, index: app.index }).find((x) => !x.cancelled && x.time > Date.now() - 60000) : null;
         if (!d) return chip(IC.train, 'Aucun départ');
         const mins = Math.max(0, Math.round((d.time - Date.now()) / 60000));
         const line = d.line || W.LINES.C01728;
@@ -1683,8 +1683,8 @@ ${app.toast ? `<div class="toast" role="alert">${esc(app.toast)}</div>` : ''}`;
         <div class="field-row"><span class="field-label">Hauteur</span>${seg('draft-h', String(d.h), [['1', '1'], ['2', '2'], ['3', '3'], ['4', '4']])}</div>
         ${t.options ? `<div class="field-row"><span class="field-label">Affichage</span>${seg('draft-group', d.options.group || (d.scope === 'all' ? 'room' : 'sensor'), [['sensor', 'Par capteur'], ['room', 'Moyenne par pièce']])}</div>` : ''}
         ${d.type === 'transit' ? (() => {
-          const st = L.resolve(d, env(room))[0];
-          const dirs = st ? HD.Modules.transitDirections(st, { states: app.states, index: app.index }) : [];
+          const sts = L.resolve(d, env(room));
+          const dirs = sts.length ? HD.Modules.transitDirections(sts, { states: app.states, index: app.index }) : [];
           return `<div class="field-row"><span class="field-label">Direction</span>${seg('draft-dir', d.options.direction || '', [['', 'Toutes']].concat(dirs.map((x) => [x, esc(x)])))}</div>
             <p class="muted small">« Toutes » : en largeur 2 ou plus, une colonne par direction.</p>`;
         })() : ''}

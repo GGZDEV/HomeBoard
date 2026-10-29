@@ -624,8 +624,22 @@ window.HD = window.HD || {};
     }).filter((d) => isFinite(d.time) && d.time > now - 30000).sort((a, b) => a.time - b.time);
   }
 
-  // SIRI MonitoredStopVisit -> { time, aimed, delay, cancelled, destination, direction, mission, platform, line }
+  // Several sources (one IDFM entry per destination): merged by time, a train seen by two entries kept once.
   function departures(st, c) {
+    if (Array.isArray(st)) {
+      if (st.length <= 1) return st[0] ? departures(st[0], c) : [];
+      const seen = new Set();
+      return st.flatMap((x) => departures(x, c)).sort((a, b) => a.time - b.time).filter((d) => {
+        const k = (d.mission || '') + '|' + d.destination + '|' + Math.round(d.time / 60000);
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+    }
+    return departuresOf(st, c);
+  }
+  // SIRI MonitoredStopVisit -> { time, aimed, delay, cancelled, destination, direction, mission, platform, line }
+  function departuresOf(st, c) {
     if (isIdfmTime(st)) return idfmDepartures(st, c);
     const visits = (st && st.attributes && st.attributes.MonitoredStopVisit) || [];
     const now = Date.now();
@@ -651,8 +665,8 @@ window.HD = window.HD || {};
   }
 
   // Directions seen in the data, for the module's direction filter.
-  function transitDirections(st, c) {
-    return [...new Set(departures(st, c).map((d) => d.direction || d.destination).filter(Boolean))];
+  function transitDirections(list, c) {
+    return [...new Set(departures(list, c).map((d) => d.direction || d.destination).filter(Boolean))];
   }
 
   // Disruptions for the module's line: cancellations / delays within the hour (from the departures)
@@ -702,7 +716,7 @@ window.HD = window.HD || {};
   function transit(m, list, c) {
     const st = list[0];
     const o = m.options || {};
-    let deps = departures(st, c);
+    let deps = departures(list, c);
     const dirOf = (d) => d.direction || d.destination;
     if (o.direction) deps = deps.filter((d) => dirOf(d) === o.direction);
     const idfm = isIdfmTime(st);
@@ -714,7 +728,7 @@ window.HD = window.HD || {};
     const upd = st.last_updated && isFinite(Date.parse(st.last_updated)) ? 'maj. ' + hm(new Date(st.last_updated)) : '';
     const head2 = (meta) => `<div class="mod-head"><h2 class="row transit-title">${badge}<span>${esc(m.title || (w === 1 ? station : 'Départs · ' + station))}</span></h2>${meta ? `<span class="muted small">${esc(meta)}</span>` : ''}</div>`;
     if (!deps.length) {
-      const noData = idfm ? idfmGroup(st, c, isIdfmTime).every((s) => !M.isAvail(s) || s.state === 'unknown') : !(st.attributes && st.attributes.MonitoredStopVisit);
+      const noData = idfm ? list.flatMap((x) => idfmGroup(x, c, isIdfmTime)).every((s) => !M.isAvail(s) || s.state === 'unknown') : !(st.attributes && st.attributes.MonitoredStopVisit);
       return head2(tiny ? '' : upd) + (tiny ? '' : trafficInfo(m, line, deps, c, st)) + `<div class="mod-empty"><span class="empty-ic">${icon(IC.train, 22, 1.8)}</span>
         <p class="empty-title">${noData && !idfm ? 'Aucune donnée reçue' : 'Aucun départ'}</p><p class="muted small">${noData && !idfm ? 'Vérifiez la clé API IDFM dans Home Assistant.' : 'Aucun départ annoncé pour le moment.'}</p></div>`;
     }
@@ -1068,7 +1082,7 @@ window.HD = window.HD || {};
     calendar: { name: 'Calendrier', desc: 'Agenda des prochains jours depuis vos calendriers Home Assistant (Google, iCal, local…).', icon: IC.calendar, w: 2, h: 3,
       empty: 'Aucun calendrier dans Home Assistant pour l\'instant. Connectez Google Agenda : Paramètres › Appareils et services › Ajouter une intégration › « Calendrier distant » (adresse iCal secrète) ou « Google Calendar ».',
       pick: dom('calendar'), render: calendar },
-    transit: { name: 'Départs train / RER', desc: 'Prochains départs en temps réel (Île-de-France Mobilités) : horaires, retards, quais, missions.', icon: IC.train, w: 2, h: 2, single: true,
+    transit: { name: 'Départs train / RER', desc: 'Prochains départs en temps réel (Île-de-France Mobilités) : horaires, retards, quais, missions.', icon: IC.train, w: 2, h: 2,
       emptyName: 'Départs RER D', emptyTitle: 'Capteur introuvable', emptyCode: 'homeassistant/rer_d_le_mee.yaml', emptyIcon: 'warn',
       empty: 'Ajoutez l\'intégration « Ile de France Mobilités » (HACS) ou le capteur IDFM dans Home Assistant.',
       pick: (s) => M.domainOf(s.entity_id) === 'sensor' && (!!s.attributes.MonitoredStopVisit || (isIdfmTime(s) && /(_0|#0)$/.test(s.entity_id + ' ' + (s.attributes.friendly_name || '')))), render: transit },
