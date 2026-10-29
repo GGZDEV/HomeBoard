@@ -457,10 +457,12 @@ window.HD = window.HD || {};
     }
 
     const pages = n === 7 ? Math.max(1, o.pages || 1) : 1;
-    // One page = n days from today + 7×p.
+    // One page = n days from today + 7×p; a full week (7 days) starts on Monday, so the
+    // first page may begin with a few past days (k < 0, shown dimmed).
+    const off = n === 7 ? -((today.getDay() + 6) % 7) : 0;
     const page = (p) => {
       const days = Array.from({ length: n }, (_, j) => {
-        const k = p * 7 + j;
+        const k = p * 7 + j + off;
         const d0 = new Date(today); d0.setDate(d0.getDate() + k);
         const d1 = new Date(d0); d1.setDate(d1.getDate() + 1);
         return { k, d0, dow: dow(d0), num: d0.getDate(), evs: events.map((ev, i) => [ev, i]).filter(([ev]) => ev.start < d1 && ev.end > d0) };
@@ -470,7 +472,7 @@ window.HD = window.HD || {};
       const evIdx = events.map((ev, i) => [ev, i]).filter(([ev]) => ev.start < end && ev.end > first);
       const busy = days.reduce((s, d) => s + d.evs.length, 0);
       const fmt = (d, month) => d.getDate() + (month ? ' ' + d.toLocaleDateString('fr-FR', { month: 'short' }) : '');
-      const span = p === 0 ? (n === 7 ? '7 prochains jours' : n === 1 ? "Aujourd'hui" : n + ' prochains jours')
+      const span = p === 0 ? (n === 7 ? 'Cette semaine' : n === 1 ? "Aujourd'hui" : n + ' prochains jours')
         : 'Du ' + fmt(first, first.getMonth() !== last.getMonth()) + ' au ' + fmt(last, true);
       const count = busy ? plural(evIdx.length, 'événement', 'événements') : free;
       return { p, days, evIdx, busy, span, count };
@@ -479,12 +481,12 @@ window.HD = window.HD || {};
     const cell = (d) => {
       const dots = d.evs.slice(0, 3).map(([ev]) => `<i style="background: ${ev.color}"></i>`).join('');
       const inner = `<span class="ag-dow">${esc(d.dow)}</span><span class="ag-num">${d.num}</span>${dots ? `<span class="ag-dots" aria-hidden="true">${dots}</span>` : ''}`;
-      const c2 = `ag-cell${d.k === 0 ? ' is-today' : ''}`;
+      const c2 = `ag-cell${d.k === 0 ? ' is-today' : d.k < 0 ? ' is-past' : ''}`;
       return d.evs.length ? `<button class="${c2}" ${open(d.evs[0][1])} aria-label="${esc(dayTitle(d.d0) + ' : ' + plural(d.evs.length, 'événement', 'événements'))}">${inner}</button>` : `<div class="${c2}">${inner}</div>`;
     };
     const strip = (pg, cls) => `<div class="ag-week${cls ? ' ' + cls : ''}" style="grid-template-columns: repeat(${n}, minmax(0, 1fr))">${pg.days.map((d) => cell(d)).join('')}</div>`;
     const emptyBlock = (pg) => `<div class="ag-empty"><span class="empty-ic">${icon(IC.calendar, 24, 1.8)}</span><span class="empty-title">${esc(free)}</span>
-      <span class="muted small">${o.loading ? '' : n === 1 ? "Aucun événement prévu aujourd'hui." : pg.p === 0 ? 'Aucun événement prévu sur les ' + pg.span + '.' : 'Aucun événement prévu ' + pg.span.replace(/^Du/, 'du') + '.'}</span></div>`;
+      <span class="muted small">${o.loading ? '' : n === 1 ? "Aucun événement prévu aujourd'hui." : pg.p === 0 ? (n === 7 ? 'Aucun événement prévu cette semaine.' : 'Aucun événement prévu sur les ' + pg.span + '.') : 'Aucun événement prévu ' + pg.span.replace(/^Du/, 'du') + '.'}</span></div>`;
     const sfx = (pg) => (pages > 1 ? ':' + pg.p : '');
 
     let meta, body;
@@ -517,7 +519,7 @@ window.HD = window.HD || {};
             ? `<button class="ag-one" ${open(first[1])} style="--cal: ${first[0].color}"><span class="ag-chip-title">${esc(first[0].title)}</span>${d.evs.length > 1 ? `<span class="muted small">+${d.evs.length - 1}</span>` : ''}</button>`
             : '<span class="muted small ag-libre">Libre</span>';
         }
-        return `<li class="ag-row${d.k === 0 ? ' is-today' : ''}">${date}${inner}</li>`;
+        return `<li class="ag-row${d.k === 0 ? ' is-today' : d.k < 0 ? ' is-past' : ''}">${date}${inner}</li>`;
       }).join('')}</ul>`;
     }
     if (pages === 1) return { meta: meta(all[0]), html: body(all[0]) };

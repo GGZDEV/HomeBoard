@@ -943,6 +943,7 @@ button.ag-cell:hover { background: rgba(255, 255, 255, 0.08); }
 .ag-row { flex: 1 0 auto; min-height: 44px; max-height: 104px; display: flex; align-items: center; gap: 14px; padding: 6px 12px 6px 6px; border-radius: 14px; background: rgba(0, 0, 0, 0.12); box-shadow: inset 0 0 0 1px transparent; }
 .ag-row.is-today { background: rgba(255, 255, 255, 0.10); box-shadow: inset 0 0 0 1px var(--accent); }
 .ag-row.is-today .ag-dow { color: var(--accent); }
+.ag-cell.is-past, .ag-row.is-past { opacity: 0.4; }
 .ag-date { flex: none; width: 48px; display: flex; flex-direction: column; align-items: center; gap: 1px; }
 .ag-date .ag-num { font-size: 18px; line-height: 1.1; }
 .ag-free { flex: 1; align-self: stretch; display: flex; align-items: center; padding: 0 14px; border-radius: 10px; border: 1px dashed rgba(255, 255, 255, 0.14); font-size: 13px; color: rgba(246, 241, 236, 0.62); }
